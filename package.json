@@ -30,7 +30,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/guzman-lopez/memos-mcp.git"
+    "url": "https://github.com/CesarGuzmanLopez/memos-mcp.git"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
