@@ -7,10 +7,36 @@ import { registerRelationTools } from "./tools/relations.js";
 import { registerReviewTools } from "./tools/review.js";
 import { registerPrompts } from "./prompts/index.js";
 import { registerResources } from "./resources/index.js";
+import { VALID_VISIBILITIES, type Visibility } from "./types.js";
 
-const VALID_VISIBILITIES = ["PRIVATE", "PROTECTED", "PUBLIC"] as const;
-type Visibility = (typeof VALID_VISIBILITIES)[number];
+export interface ServerOptions {
+  defaultVisibility?: Visibility;
+}
 
+// Crear servidor con cliente inyectado (para HTTP multi-tenant)
+export const createServerWithClient = (
+  client: MemosClient,
+  options: ServerOptions = {}
+) => {
+  const defaultVisibility = options.defaultVisibility ?? "PRIVATE";
+
+  const server = new McpServer({
+    name: "memos-mcp",
+    version: "2.0.0",
+  });
+
+  registerMemoTools(server, client, { defaultVisibility });
+  registerTagTools(server, client);
+  registerResourceTools(server, client);
+  registerRelationTools(server, client);
+  registerReviewTools(server, client);
+  registerPrompts(server);
+  registerResources(server, client);
+
+  return server;
+};
+
+// Crear servidor con env vars (para stdio mode)
 export const createServer = () => {
   const memosUrl = process.env.MEMOS_URL;
   const memosToken = process.env.MEMOS_TOKEN;
@@ -31,21 +57,5 @@ export const createServer = () => {
       : "PRIVATE";
 
   const client = new MemosClient(memosUrl, memosToken);
-
-  const server = new McpServer({
-    name: "memos-mcp",
-    version: "1.0.0",
-  });
-
-  registerMemoTools(server, client, { defaultVisibility });
-  registerTagTools(server, client);
-  registerResourceTools(server, client);
-  registerRelationTools(server, client);
-  registerReviewTools(server, client);
-  registerPrompts(server);
-
-  // Register MCP resources
-  registerResources(server, client);
-
-  return server;
+  return createServerWithClient(client, { defaultVisibility });
 };

@@ -4,142 +4,162 @@ import { MemosClient } from "../client.js";
 import type { Memo } from "../types.js";
 import { summarizeMemo } from "./utils.js";
 
-interface OnThisDayGroup {
-  year: number;
-  memos: Memo[];
+// Límite de concurrencia para requests paralelos
+const MAX_CONCURRENT_REQUESTS = 5;
+
+// Helper para ejecutar promises con concurrencia limitada, preservando orden
+async function parallelLimit<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number
+): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  const executing = new Set<Promise<void>>();
+
+  tasks.forEach((task, index) => {
+    const p = task().then((result) => {
+      results[index] = result;
+    });
+    const wrapped = p.then(() => { executing.delete(wrapped); });
+    executing.add(wrapped);
+
+    if (executing.size >= limit) {
+      return Promise.race(executing);
+    }
+  });
+
+  await Promise.all(executing);
+  return results.filter((r): r is T => r !== undefined);
+}
+
+// Validar y convertir fecha a timestamp Unix
+function parseDateToTimestamp(dateStr: string, paramName: string): number {
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid ${paramName}: "${dateStr}". Use ISO 8601 format (e.g. "2025-01-01").`);
+  }
+  return Math.floor(date.getTime() / 1000);
 }
 
 export const registerReviewTools = (server: McpServer, client: MemosClient) => {
   server.registerTool(
-    "get_review_memos",
+    "search_memos_by_date",
     {
-      description: "Get today's batch of memos for spaced-repetition review (回顾). Returns a daily batch selected by the review algorithm.",
+      description: "Search memos from a specific date range. Useful for reviewing past entries.",
       inputSchema: {
-        refresh: z.boolean().optional().describe("Load a new batch even if today's review is already completed"),
+        startDate: z.string().describe("Start date (ISO 8601, e.g. '2025-01-01' or '2025-01-01T00:00:00Z')"),
+        endDate: z.string().optional().describe("End date (ISO 8601). Defaults to start date if not provided."),
+        pageSize: z.number().int().min(1).max(100).default(20).describe("Number of memos per page"),
+        pageToken: z.string().optional().describe("Token for fetching the next page"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ refresh }) => {
-      const params: Record<string, string> = {};
-      if (refresh) params.force = "true";
-      const result = await client.get<{
-        memos: Memo[];
-        totalCount: number;
-        completed: boolean;
-      }>("/api/v1/review/memos", params);
+    async ({ startDate, endDate, pageSize, pageToken }) => {
+      const currentUser = await client.getCurrentUser();
+
+      const startTs = parseDateToTimestamp(startDate, "startDate");
+      const endTs = endDate
+        ? parseDateToTimestamp(endDate, "endDate")
+        : startTs + 86400;
+
+      const filter = `creator == "${currentUser}" && created_ts >= ${startTs} && created_ts <= ${endTs}`;
+
+      const params: Record<string, string> = {
+        pageSize: String(pageSize),
+        filter,
+      };
+      if (pageToken) params.pageToken = pageToken;
+
+      const result = await client.get<{ memos: Memo[]; nextPageToken?: string }>(
+        "/api/v1/memos",
+        params
+      );
 
       const summaries = (result.memos || []).map((m) =>
         summarizeMemo(m as unknown as Record<string, unknown>)
       );
+
       const output: Record<string, unknown> = {
         memos: summaries,
-        totalEligible: result.totalCount,
-        completed: result.completed,
+        totalFound: result.memos?.length || 0,
       };
-      return { content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }] };
-    }
-  );
+      if (result.nextPageToken) output.nextPageToken = result.nextPageToken;
 
-  server.registerTool(
-    "complete_review",
-    {
-      description: "Mark the current review batch as completed. Call this after the user has finished reviewing all memos from get_review_memos.",
-      inputSchema: {
-        memoIds: z.array(z.number().int()).min(1).describe("IDs of the reviewed memos"),
-      },
-      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    },
-    async ({ memoIds }) => {
-      const result = await client.post<{ sessionId: number; recordedCount: number }>(
-        "/api/v1/review/record",
-        {
-          memoNames: memoIds.map((id) => `memos/${id}`),
-          source: "REVIEW_SOURCE_REVIEW",
-        }
-      );
       return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Review completed: ${result.recordedCount} memo(s) recorded.`,
-          },
-        ],
+        content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }],
       };
     }
   );
 
   server.registerTool(
-    "get_on_this_day_memos",
+    "get_memos_from_this_day_previous_years",
     {
-      description: "Get memos created on this day in previous years, grouped by year. Great for revisiting past thoughts and memories.",
+      description: "Get memos created on this same day in previous years. Great for revisiting past thoughts.",
       inputSchema: {
-        month: z.number().int().min(1).max(12).optional().describe("Month (1-12), defaults to current month"),
-        day: z.number().int().min(1).max(31).optional().describe("Day (1-31), defaults to current day"),
+        years: z.number().int().min(1).max(10).default(5).describe("How many years back to search"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ month, day }) => {
-      const params: Record<string, string> = {
-        pageSize: "100",
-      };
-      if (month !== undefined) params.month = String(month);
-      if (day !== undefined) params.day = String(day);
-      const result = await client.get<{
-        groups: OnThisDayGroup[];
-        totalCount: number;
-      }>("/api/v1/review/on-this-day", params);
+    async ({ years }) => {
+      const currentUser = await client.getCurrentUser();
+      const now = new Date();
+      const month = now.getUTCMonth() + 1;
+      const day = now.getUTCDate();
+      const currentYear = now.getUTCFullYear();
 
-      const groups = (result.groups || []).map((g) => ({
-        year: g.year,
-        memos: (g.memos || []).map((m) =>
-          summarizeMemo(m as unknown as Record<string, unknown>)
-        ),
-      }));
+      // Crear tasks para buscar cada año en paralelo
+      const tasks: (() => Promise<{ year: number; memos: unknown[] } | null>)[] = [];
 
-      if (groups.length === 0) {
-        return { content: [{ type: "text" as const, text: "No memos found on this day in previous years." }] };
+      for (let year = currentYear - 1; year >= currentYear - years; year--) {
+        tasks.push(async () => {
+          const yearStart = Math.floor(Date.UTC(year, month - 1, day) / 1000);
+          const yearEnd = yearStart + 86400;
+
+          const filter = `creator == "${currentUser}" && created_ts >= ${yearStart} && created_ts < ${yearEnd}`;
+
+          const result = await client.get<{ memos: Memo[] }>("/api/v1/memos", {
+            pageSize: "10",
+            filter,
+          });
+
+          if (result.memos && result.memos.length > 0) {
+            return {
+              year,
+              memos: result.memos.map((m) =>
+                summarizeMemo(m as unknown as Record<string, unknown>)
+              ),
+            };
+          }
+          return null;
+        });
       }
 
-      const output = { groups, totalCount: result.totalCount };
-      return { content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }] };
-    }
-  );
+      const allResults = await parallelLimit(tasks, MAX_CONCURRENT_REQUESTS);
+      const results = allResults.filter((r): r is { year: number; memos: unknown[] } => r !== null);
 
-  server.registerTool(
-    "update_review_setting",
-    {
-      description: "Update review preferences: how many memos per batch, and which tags to include or exclude.",
-      inputSchema: {
-        sessionSize: z.number().int().min(1).max(50).optional().describe("Number of memos per review batch (default 10)"),
-        includeTags: z.array(z.string()).optional().describe("Only review memos with these tags. Empty array or omit for all tags"),
-        excludeTags: z.array(z.string()).optional().describe("Skip memos with these tags"),
-      },
-      annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
-    },
-    async ({ sessionSize, includeTags, excludeTags }) => {
-      const currentUser = await client.getCurrentUser();
-      const userId = currentUser.match(/^users\/(\d+)$/)?.[1];
-      if (!userId) throw new Error(`Unexpected user format: ${currentUser}`);
-
-      const current = await client.get<{
-        reviewSetting?: { sessionSize?: number; includeTags?: string[]; excludeTags?: string[] };
-      }>(`/api/v1/users/${userId}/setting`);
-
-      const reviewSetting = {
-        sessionSize: sessionSize ?? current.reviewSetting?.sessionSize ?? 10,
-        includeTags: includeTags ?? current.reviewSetting?.includeTags ?? [],
-        excludeTags: excludeTags ?? current.reviewSetting?.excludeTags ?? [],
-      };
-
-      await client.patch(`/api/v1/users/${userId}/setting`, { reviewSetting }, {
-        updateMask: "review_setting",
-      });
+      if (results.length === 0) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `No memos found on this day (${month}/${day}) in previous ${years} years.`,
+            },
+          ],
+        };
+      }
 
       return {
         content: [
           {
             type: "text" as const,
-            text: `Review setting updated: ${JSON.stringify(reviewSetting)}`,
+            text: JSON.stringify(
+              {
+                message: `Memories from this day in previous years`,
+                date: `${month}/${day}`,
+                groups: results,
+              },
+              null,
+              2
+            ),
           },
         ],
       };

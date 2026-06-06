@@ -1,17 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { MemosClient } from "../client.js";
-import type { Memo, MemoRelation } from "../types.js";
-
-async function resolveToNumericId(client: MemosClient, id: string): Promise<number> {
-  if (/^\d+$/.test(id)) {
-    return parseInt(id, 10);
-  }
-  const memo = await client.get<Memo>(`/api/v1/memos:by-uid/${id}`);
-  const match = memo.name.match(/^memos\/(\d+)$/);
-  if (!match) throw new Error(`Unexpected memo name format: ${memo.name}`);
-  return parseInt(match[1], 10);
-}
+import type { MemoRelation } from "../types.js";
+import { resolveToNumericId } from "./utils.js";
 
 function extractId(memoRef: unknown): number | undefined {
   const name = typeof memoRef === "string" ? memoRef : (memoRef as Record<string, unknown>)?.name as string;

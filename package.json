@@ -1,7 +1,7 @@
 {
-  "name": "@chriscurrycc/memos-mcp",
-  "version": "1.2.0",
-  "description": "Model Context Protocol server for Memos - a self-hosted note-taking service",
+  "name": "memos-mcp",
+  "version": "2.0.0",
+  "description": "MCP server for Memos - supports HTTP/SSE for multi-client access (OpenCode, LibreChat, Claude)",
   "type": "module",
   "bin": {
     "memos-mcp": "./dist/index.js"
@@ -12,24 +12,36 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
+    "dev:http": "tsx src/index.ts --http",
+    "start": "node dist/index.js",
+    "start:http": "node dist/index.js --http",
     "prepublishOnly": "tsc"
   },
   "keywords": [
     "mcp",
     "model-context-protocol",
     "memos",
-    "note-taking"
+    "note-taking",
+    "sse",
+    "http",
+    "multi-tenant"
   ],
-  "author": "chriscurrycc",
+  "author": "guzman-lopez",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/guzman-lopez/memos-mcp.git"
+  },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.2.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/node": "^25.5.0",
-    "tsx": "^4.19.0",
-    "typescript": "^6.0.2"
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.9.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
   },
   "engines": {
     "node": ">=18.0.0"

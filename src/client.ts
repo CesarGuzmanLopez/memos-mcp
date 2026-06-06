@@ -1,3 +1,20 @@
+// Cache a nivel de módulo para el usuario actual por combinación baseUrl+token
+const userCache = new Map<string, { user: string; timestamp: number }>();
+const USER_CACHE_TTL_MS = 300_000; // 5 minutos
+
+// Sweep periódico del cache de usuarios
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of userCache) {
+    if (now - entry.timestamp > USER_CACHE_TTL_MS) {
+      userCache.delete(key);
+    }
+  }
+}, 60_000); // Cada minuto
+
+// Timeout para requests a Memos API
+const FETCH_TIMEOUT_MS = 30_000; // 30 segundos
+
 export class MemosClient {
   readonly baseUrl: string;
   private token: string;
@@ -8,21 +25,31 @@ export class MemosClient {
     this.token = token;
   }
 
-  // Fetch and cache the current user's name (e.g. "users/1")
+  // Obtener usuario actual con cache global
   async getCurrentUser(): Promise<string> {
     if (this._currentUser) return this._currentUser;
-    const res = await this.post<{ name: string }>("/api/v1/auth/status", {});
-    this._currentUser = res.name;
-    return this._currentUser;
-  }
 
-  // Fetch the workspace MEMO_RELATED setting. Not cached: the setting can
-  // change at runtime and correctness matters more than saving one HTTP call.
-  async getMemoRelatedSetting(): Promise<{ displayWithUpdateTime?: boolean }> {
-    const res = await this.get<{
-      memoRelatedSetting?: { displayWithUpdateTime?: boolean };
-    }>("/api/v1/workspace/settings/MEMO_RELATED");
-    return res.memoRelatedSetting || {};
+    const cacheKey = `${this.baseUrl}:${this.token}`;
+    const cached = userCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < USER_CACHE_TTL_MS) {
+      this._currentUser = cached.user;
+      return this._currentUser;
+    }
+
+    const result = await this.get<{ memos: Array<{ creator: string }> }>(
+      "/api/v1/memos",
+      { pageSize: "1" }
+    );
+
+    if (result.memos && result.memos.length > 0) {
+      this._currentUser = result.memos[0].creator;
+      userCache.set(cacheKey, { user: this._currentUser, timestamp: Date.now() });
+    }
+
+    if (!this._currentUser) {
+      throw new Error("Could not determine current user. No memos found with this token.");
+    }
+    return this._currentUser;
   }
 
   private headers(): Record<string, string> {
@@ -30,6 +57,30 @@ export class MemosClient {
       Authorization: `Bearer ${this.token}`,
       "Content-Type": "application/json",
     };
+  }
+
+  // Helper para fetch con timeout
+  private async fetchWithTimeout(
+    url: string,
+    options: RequestInit
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      return response;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error(`Request to ${url} timed out after ${FETCH_TIMEOUT_MS}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async get<T>(path: string, params?: Record<string, string>): Promise<T> {
@@ -41,7 +92,9 @@ export class MemosClient {
         }
       }
     }
-    const res = await fetch(url.toString(), { headers: this.headers() });
+    const res = await this.fetchWithTimeout(url.toString(), {
+      headers: this.headers(),
+    });
     if (!res.ok) {
       const body = await res.text();
       throw new Error(`GET ${path} failed (${res.status}): ${body}`);
@@ -50,7 +103,7 @@ export class MemosClient {
   }
 
   async post<T>(path: string, body?: unknown): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithTimeout(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: this.headers(),
       body: body ? JSON.stringify(body) : undefined,
@@ -71,7 +124,7 @@ export class MemosClient {
         }
       }
     }
-    const res = await fetch(url.toString(), {
+    const res = await this.fetchWithTimeout(url.toString(), {
       method: "PATCH",
       headers: this.headers(),
       body: body ? JSON.stringify(body) : undefined,
@@ -84,7 +137,7 @@ export class MemosClient {
   }
 
   async delete<T = unknown>(path: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetchWithTimeout(`${this.baseUrl}${path}`, {
       method: "DELETE",
       headers: this.headers(),
     });
@@ -92,6 +145,9 @@ export class MemosClient {
       const text = await res.text();
       throw new Error(`DELETE ${path} failed (${res.status}): ${text}`);
     }
-    return res.json() as Promise<T>;
+    // Memos DELETE may return empty body
+    const text = await res.text();
+    if (!text) return undefined as T;
+    return JSON.parse(text) as T;
   }
 }

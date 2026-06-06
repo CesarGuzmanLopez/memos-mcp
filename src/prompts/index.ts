@@ -6,65 +6,118 @@ export interface PromptDefinition {
   text: string;
 }
 
-/** Returns the static text for each prompt, keyed by prompt name. */
 export const getPromptDefinitions = (): Record<string, PromptDefinition> => ({
   capture: {
-    description: "Quick-save a thought as a memo",
-    text: "Create a memo with the provided content using the create_memo tool.",
+    description: "Quick-save a thought or note as a memo",
+    text: `Capture a new memo.
+
+Step 1: Use the create_memo tool with the content provided.
+- Include tags in the content using #hashtag syntax (e.g. "Meeting notes about #project/backend")
+- Choose visibility: PRIVATE (only you), PROTECTED (logged-in users), PUBLIC (everyone)
+
+Example:
+create_memo(content="Had a great idea about #ai/agents", visibility="PRIVATE")`,
   },
   review: {
-    description: "Start a spaced-repetition review session (间隔回顾)",
-    text: `Start a memo review session:
-1. Call get_review_memos to get today's review batch
-2. If completed=true, let me know today's review is done and ask if I want to load a new batch (refresh=true)
-3. Otherwise, present memos ONE AT A TIME in an interactive flow:
-   a. Use get_memo to fetch the full content of the FIRST memo and present it
-   b. Present the memo with ALL of its content (do not omit anything). Include:
-      - Created time and updated time at the top
-      - The full memo content with proper formatting (keep inline tags as-is in the content)
-      - If there are tags NOT already visible at the end of the content, display them highlighted at the bottom. If tags are already at the end of the content, no need to repeat them.
-      You may reformat for readability but must preserve the exact markdown formatting (bold, italic, links, etc.) from the original content. Do not drop any content or tags.
-   c. Wait for the user to confirm before moving to the next memo (e.g. user says "next", "ok", "continue", etc.)
-   d. Repeat for each memo until all memos have been reviewed
-4. After the LAST memo is presented and the user confirms, ask the user if they want to mark this review batch as completed
-5. Only call complete_review with the memo IDs after the user explicitly confirms completion
-6. Congratulate me on completing the review`,
+    description: "Review memos from a specific time period",
+    text: `Review your memos from a time period.
+
+Step 1: Use search_memos_by_date with a date range to find memos.
+- For "today": use today's date as both startDate and endDate
+- For "this week": use 7 days ago as startDate
+- For "this month": use 30 days ago as startDate
+
+Step 2: Present each memo ONE AT A TIME to the user.
+- Use get_memo with the memo id to fetch full content
+- Show: created date, tags, and the full content
+- Wait for user to say "next" or "ok" before showing the next memo
+
+Step 3: After all memos, give a brief summary of what was reviewed.
+
+Example tool calls:
+search_memos_by_date(startDate="2025-06-01", endDate="2025-06-06")
+get_memo(id="42")`,
   },
   on_this_day: {
-    description: "See memos from this day in previous years (历史上的今天)",
-    text: `Show me my "On This Day" memories:
-1. Call get_on_this_day_memos to get memos from this day in previous years
-2. Present them grouped by year, starting from the most recent
-3. For each memo, use get_memo to show the full content
-4. Add a brief reflection on how my thoughts or interests have evolved over the years`,
+    description: "See what you wrote on this day in previous years",
+    text: `Show "On This Day" memories from previous years.
+
+Step 1: Use get_memos_from_this_day_previous_years to find past memos.
+- Default searches 5 years back
+- Results are grouped by year
+
+Step 2: For each year with memos, use get_memo to show full content.
+- Present starting from the most recent year
+- Add a brief reflection on how thoughts evolved
+
+Example tool calls:
+get_memos_from_this_day_previous_years(years=5)
+get_memo(id="42")`,
   },
   digest: {
-    description: "Summarize memo activity for a time period",
-    text: "Create a digest of my memo activity for the specified period.",
+    description: "Summarize your memo activity for a period",
+    text: `Create a digest of your memo activity.
+
+Step 1: Get memos from the period.
+- For "today": search_memos_by_date with today's date
+- For "week": search_memos_by_date with startDate 7 days ago
+- For "month": search_memos_by_date with startDate 30 days ago
+
+Step 2: Analyze and summarize:
+- Total memos created
+- Main themes based on tags and content
+- Memos with incomplete tasks (hasIncompleteTasks)
+- Memos pinned for attention
+- Any trends or patterns
+
+Example tool calls:
+search_memos_by_date(startDate="2025-05-30", endDate="2025-06-06")
+list_tags()`,
   },
   tag_overview: {
-    description: "Review your tag system and organization",
-    text: `Give me an overview of my tag system:
-1. Call list_tags to get all top-level tags with counts
-2. For tags with children (hasChildren=true), call list_tags with parent param to show the hierarchy
-3. Call list_tags with pinnedOnly=true to highlight my pinned tags
-4. Analyze and present:
-   - Tag hierarchy structure
-   - Most used vs rarely used tags
-   - Pinned tags and their usage
-   - Suggestions for cleanup (similar tags that could be merged, unused tags, etc.)`,
+    description: "Analyze your tag system and suggest improvements",
+    text: `Analyze your tag organization.
+
+Step 1: Get all top-level tags.
+list_tags()
+
+Step 2: For tags with hasChildren=true, explore the hierarchy.
+list_tags(parent="work")
+list_tags(parent="project")
+
+Step 3: Present analysis:
+- Tag hierarchy structure
+- Most used vs rarely used tags
+- Tags that could be merged (similar names)
+- Suggestions for cleanup
+
+Example tool calls:
+list_tags()
+list_tags(parent="work")
+list_tags(parent="project")`,
   },
   relation_graph: {
-    description: "Explore the relation graph starting from a memo (关系图谱)",
-    text: `Explore the relation graph starting from the specified memo:
-1. Call get_memo to show the starting memo's content
-2. Call list_memo_relations with the memo id and depth=5 to get the full relation graph
-3. For each connected memo, call get_memo to understand its content
-4. Present:
-   - A text-based visualization of the graph structure (which memos reference which)
-   - Brief summary of each connected memo
-   - The themes and topics that connect these memos
-   - Any interesting patterns or clusters in the graph`,
+    description: "Explore connections between memos",
+    text: `Explore how your memos are connected.
+
+Step 1: Get the starting memo.
+get_memo(id="<memo_id>")
+
+Step 2: Find related memos with increasing depth.
+list_memo_relations(id="<memo_id>", depth=2)
+
+Step 3: For each connected memo found, fetch its content.
+get_memo(id="<connected_memo_id>")
+
+Step 4: Present:
+- Text visualization of the graph (which memos reference which)
+- Brief summary of each connected memo
+- Common themes connecting the memos
+
+Example tool calls:
+get_memo(id="42")
+list_memo_relations(id="42", depth=2)
+get_memo(id="15")`,
   },
 });
 
@@ -76,9 +129,9 @@ export const registerPrompts = (server: McpServer) => {
     {
       description: defs.capture.description,
       argsSchema: {
-        content: z.string().describe("The thought or note to capture"),
-        tags: z.string().optional().describe("Comma-separated tags to add, e.g. 'idea,project'"),
-        visibility: z.enum(["PRIVATE", "PROTECTED", "PUBLIC"]).default("PRIVATE").describe("Memo visibility"),
+        content: z.string().describe("The thought or note to save"),
+        tags: z.string().optional().describe("Comma-separated tags (e.g. 'idea,project,meeting')"),
+        visibility: z.enum(["PRIVATE", "PROTECTED", "PUBLIC"]).default("PRIVATE").describe("Who can see this memo"),
       },
     },
     ({ content, tags, visibility }) => {
@@ -108,32 +161,51 @@ export const registerPrompts = (server: McpServer) => {
     "review",
     {
       description: defs.review.description,
+      argsSchema: {
+        period: z.enum(["today", "week", "month", "year"]).default("week").describe("Time period to review"),
+      },
     },
-    () => ({
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text: defs.review.text,
+    ({ period }) => {
+      const periodMap: Record<string, { days: number; label: string }> = {
+        today: { days: 1, label: "today" },
+        week: { days: 7, label: "the past week" },
+        month: { days: 30, label: "the past month" },
+        year: { days: 365, label: "the past year" },
+      };
+      const { days, label } = periodMap[period];
+
+      const endDate = new Date().toISOString().split("T")[0];
+      const startDate = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+
+      return {
+        messages: [
+          {
+            role: "user",
+            content: {
+              type: "text",
+              text: `Review your memos from ${label}.\n\nUse these tool calls in order:\n1. search_memos_by_date(startDate="${startDate}", endDate="${endDate}")\n2. get_memo(id="<id_from_results>") for each memo, one at a time\n3. Wait for user confirmation between each memo\n4. Summarize when done`,
+            },
           },
-        },
-      ],
-    })
+        ],
+      };
+    }
   );
 
   server.registerPrompt(
     "on_this_day",
     {
       description: defs.on_this_day.description,
+      argsSchema: {
+        years: z.number().int().min(1).max(10).default(5).describe("How many years back to search"),
+      },
     },
-    () => ({
+    ({ years }) => ({
       messages: [
         {
           role: "user",
           content: {
             type: "text",
-            text: defs.on_this_day.text,
+            text: `Show me what I wrote on this day in previous years.\n\nUse these tool calls:\n1. get_memos_from_this_day_previous_years(years=${years})\n2. get_memo(id="<id>") for each memo found\n3. Present grouped by year, most recent first`,
           },
         },
       ],
@@ -149,28 +221,23 @@ export const registerPrompts = (server: McpServer) => {
       },
     },
     ({ period }) => {
-      const periodMap = {
+      const periodMap: Record<string, { days: number; label: string }> = {
         today: { days: 1, label: "today" },
         week: { days: 7, label: "the past week" },
         month: { days: 30, label: "the past month" },
       };
       const { days, label } = periodMap[period];
+
+      const endDate = new Date().toISOString().split("T")[0];
+      const startDate = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+
       return {
         messages: [
           {
             role: "user",
             content: {
               type: "text",
-              text: `Create a digest of my memo activity for ${label}:
-1. Call list_memos with startDate set to ${days} days ago, pageSize=100 to get recent memos
-2. Call list_tags to see tag usage patterns
-3. Summarize:
-   - Total number of memos created/updated in this period
-   - Key themes and topics based on tags and content
-   - Any pinned memos that might need attention
-   - Any memos with incomplete tasks (call list_memos with hasIncompleteTasks=true)
-   - Trends or patterns you notice
-4. Present as a concise briefing`,
+              text: `Create a digest of my memo activity for ${label}.\n\nUse these tool calls:\n1. search_memos_by_date(startDate="${startDate}", endDate="${endDate}")\n2. list_tags() to see tag usage\n3. Summarize: total memos, main themes, incomplete tasks, trends`,
             },
           },
         ],
@@ -189,7 +256,7 @@ export const registerPrompts = (server: McpServer) => {
           role: "user",
           content: {
             type: "text",
-            text: defs.tag_overview.text,
+            text: `Analyze my tag organization.\n\nUse these tool calls:\n1. list_tags() for top-level tags\n2. list_tags(parent="<tag>") for tags with hasChildren=true\n3. Present: hierarchy, usage patterns, cleanup suggestions`,
           },
         },
       ],
@@ -210,15 +277,7 @@ export const registerPrompts = (server: McpServer) => {
           role: "user",
           content: {
             type: "text",
-            text: `Explore the relation graph starting from memo ${memo}:
-1. Call get_memo to show the starting memo's content
-2. Call list_memo_relations with id="${memo}" and depth=5 to get the full relation graph
-3. For each connected memo, call get_memo to understand its content
-4. Present:
-   - A text-based visualization of the graph structure (which memos reference which)
-   - Brief summary of each connected memo
-   - The themes and topics that connect these memos
-   - Any interesting patterns or clusters in the graph`,
+            text: `Explore memo connections starting from memo ${memo}.\n\nUse these tool calls:\n1. get_memo(id="${memo}")\n2. list_memo_relations(id="${memo}", depth=3)\n3. get_memo(id="<connected_id>") for each relation\n4. Present graph visualization and themes`,
           },
         },
       ],

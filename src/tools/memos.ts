@@ -1,28 +1,22 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { MemosClient } from "../client.js";
-import type { Memo } from "../types.js";
-import { summarizeMemo } from "./utils.js";
-
-type Visibility = "PRIVATE" | "PROTECTED" | "PUBLIC";
+import type { Memo, Visibility } from "../types.js";
+import { summarizeMemo, resolveToNumericId } from "./utils.js";
 
 type OrderByField = "create_time" | "update_time";
 
 interface FilterOptions {
-  creator: string;
+  creator?: string;
   query?: string;
   tags?: string[];
   visibility?: Visibility[];
   state?: "NORMAL" | "ARCHIVED";
   pinned?: boolean;
-  startDate?: string;
-  endDate?: string;
   hasLink?: boolean;
   hasTaskList?: boolean;
   hasCode?: boolean;
   hasIncompleteTasks?: boolean;
-  random?: boolean;
-  orderByField?: OrderByField;
 }
 
 function parseToUnixTimestamp(isoString: string, paramName: string): number {
@@ -46,53 +40,42 @@ function parseToRFC3339(isoString: string, paramName: string): string {
 }
 
 function buildCelFilter(opts: FilterOptions): string {
-  const parts: string[] = [`creator == "${opts.creator}"`];
+  const parts: string[] = [];
+
+  if (opts.creator) {
+    const escaped = opts.creator.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    parts.push(`creator == "${escaped}"`);
+  }
 
   if (opts.query) {
     const escaped = opts.query.replace(/"/g, '\\"');
-    parts.push(`content_search == ["${escaped}"]`);
+    parts.push(`content.contains("${escaped}")`);
   }
   if (opts.tags?.length) {
-    const tagList = opts.tags.map((t) => `"${t.replace(/"/g, '\\"')}"`).join(", ");
-    parts.push(`tag_search == [${tagList}]`);
+    for (const tag of opts.tags) {
+      const escaped = tag.replace(/"/g, '\\"');
+      parts.push(`"${escaped}" in tags`);
+    }
   }
   if (opts.visibility?.length) {
     const visList = opts.visibility.map((v) => `"${v}"`).join(", ");
-    parts.push(`visibilities == [${visList}]`);
+    parts.push(`visibility in [${visList}]`);
   }
   if (opts.state) {
-    parts.push(`row_status == "${opts.state === "ARCHIVED" ? "ARCHIVED" : "ACTIVE"}"`);
+    parts.push(`row_status == "${opts.state === "ARCHIVED" ? "ARCHIVED" : "NORMAL"}"`);
   }
   if (opts.pinned !== undefined) {
     parts.push(`pinned == ${opts.pinned}`);
-  }
-  if (opts.startDate) {
-    parts.push(`display_time_after == ${parseToUnixTimestamp(opts.startDate, "startDate")}`);
-  }
-  if (opts.endDate) {
-    parts.push(`display_time_before == ${parseToUnixTimestamp(opts.endDate, "endDate")}`);
   }
   if (opts.hasLink) parts.push(`has_link == true`);
   if (opts.hasTaskList) parts.push(`has_task_list == true`);
   if (opts.hasCode) parts.push(`has_code == true`);
   if (opts.hasIncompleteTasks) parts.push(`has_incomplete_tasks == true`);
-  if (opts.random) parts.push(`random == true`);
-  if (opts.orderByField) parts.push(`order_by_field == "${opts.orderByField}"`);
 
-  return parts.join(" && ");
+  return parts.length > 0 ? parts.join(" && ") : "";
 }
 
-async function resolveToNumericId(client: MemosClient, id: string): Promise<number> {
-  if (/^\d+$/.test(id)) {
-    return parseInt(id, 10);
-  }
-  const memo = await client.get<Memo>(`/api/v1/memos:by-uid/${id}`);
-  const match = memo.name.match(/^memos\/(\d+)$/);
-  if (!match) throw new Error(`Unexpected memo name format: ${memo.name}`);
-  return parseInt(match[1], 10);
-}
-
-function cleanMemo(memo: Record<string, unknown>) {
+function cleanMemo(memo: Record<string, unknown>): Record<string, unknown> {
   const { name, nodes, snippet, creator, ...rest } = memo;
   const id = (name as string)?.match(/^memos\/(\d+)$/)?.[1];
   if (id) rest.id = Number(id);
@@ -125,33 +108,50 @@ export const registerMemoTools = (
         visibility: z.array(visibilityEnum).optional().describe("Filter by visibility levels"),
         state: z.enum(["NORMAL", "ARCHIVED"]).optional().describe("Filter by memo state"),
         pinned: z.boolean().optional().describe("Filter by pinned status"),
-        startDate: z.string().optional().describe("Return memos after this date (ISO 8601, e.g. \"2025-01-01\"). Filters by create_time or update_time according to `orderBy`."),
-        endDate: z.string().optional().describe("Return memos before this date (ISO 8601, e.g. \"2025-03-01\"). Filters by create_time or update_time according to `orderBy`."),
+        startDate: z.string().optional().describe("Return memos created after this date (ISO 8601, e.g. \"2025-01-01\")"),
+        endDate: z.string().optional().describe("Return memos created before this date (ISO 8601, e.g. \"2025-03-01\")"),
         hasLink: z.boolean().optional().describe("Filter to memos containing links"),
         hasTaskList: z.boolean().optional().describe("Filter to memos containing task lists"),
         hasCode: z.boolean().optional().describe("Filter to memos containing code blocks"),
         hasIncompleteTasks: z.boolean().optional().describe("Filter to memos with incomplete tasks"),
-        random: z.boolean().optional().describe("Return results in random order"),
-        orderBy: z.enum(["create_time", "update_time"]).optional().describe("Sort and date-filter by create_time or update_time. Defaults to the workspace setting."),
+        orderBy: z.enum(["create_time", "update_time"]).optional().describe("Sort by create_time or update_time"),
         pageSize: z.number().int().min(1).max(100).default(20).describe("Number of memos per page"),
         pageToken: z.string().optional().describe("Token for fetching the next page"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async (args) => {
-      const currentUser = await client.getCurrentUser();
-      let orderByField: OrderByField | undefined = args.orderBy;
-      if (!orderByField) {
-        const setting = await client.getMemoRelatedSetting();
-        orderByField = setting.displayWithUpdateTime ? "update_time" : "create_time";
+      let creator: string | undefined;
+      let creatorWarning = "";
+      try {
+        creator = await client.getCurrentUser();
+      } catch {
+        creatorWarning = "Note: Could not determine current user; showing all accessible memos.\n";
       }
-      const { orderBy: _omit, ...rest } = args;
-      const filter = buildCelFilter({ creator: currentUser, ...rest, orderByField });
+
+      const orderByField: OrderByField = args.orderBy ?? "create_time";
+      const { startDate, endDate, ...filterArgs } = args;
+
+      // Build CEL filter
+      let filter = buildCelFilter({ creator, ...filterArgs });
+
+      // Add date filtering
+      if (startDate) {
+        const startTs = parseToUnixTimestamp(startDate, "startDate");
+        filter = filter ? `${filter} && created_ts >= ${startTs}` : `created_ts >= ${startTs}`;
+      }
+      if (endDate) {
+        const endTs = parseToUnixTimestamp(endDate, "endDate");
+        filter = filter ? `${filter} && created_ts <= ${endTs}` : `created_ts <= ${endTs}`;
+      }
+
       const params: Record<string, string> = {
         pageSize: String(args.pageSize),
-        filter,
+        orderBy: `${orderByField} desc`,
       };
+      if (filter) params.filter = filter;
       if (args.pageToken) params.pageToken = args.pageToken;
+
       const result = await client.get<{ memos: Memo[]; nextPageToken?: string }>(
         "/api/v1/memos",
         params
@@ -160,6 +160,7 @@ export const registerMemoTools = (
         summarizeMemo(m as unknown as Record<string, unknown>)
       );
       const output: Record<string, unknown> = { memos: summaries };
+      if (creatorWarning) output.warning = creatorWarning.trim();
       if (result.nextPageToken) output.nextPageToken = result.nextPageToken;
       return { content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }] };
     }
@@ -177,7 +178,7 @@ export const registerMemoTools = (
     async ({ id }) => {
       const path = /^\d+$/.test(id)
         ? `/api/v1/memos/${id}`
-        : `/api/v1/memos:by-uid/${id}`;
+        : `/api/v1/memos/${id}`;
       const memo = await client.get<Memo>(path);
       const cleaned = cleanMemo(memo as unknown as Record<string, unknown>);
       return { content: [{ type: "text" as const, text: JSON.stringify(cleaned, null, 2) }] };
@@ -191,7 +192,7 @@ export const registerMemoTools = (
       inputSchema: {
         content: z.string().min(1).describe("Memo content in markdown. Tags can be included with #tagname syntax"),
         visibility: visibilityEnum.optional().describe("Memo visibility. Omit to use the configured default"),
-        createTime: z.string().optional().describe("Backdate the memo. ISO 8601, e.g. \"2024-01-15\" or \"2024-01-15T10:00:00Z\". Must not be in the future. When set, both create_time and update_time are initialized to this value."),
+        createTime: z.string().optional().describe("Backdate the memo. ISO 8601, e.g. \"2024-01-15\" or \"2024-01-15T10:00:00Z\". Must not be in the future."),
       },
       annotations: { destructiveHint: false, openWorldHint: false },
     },
@@ -221,9 +222,9 @@ export const registerMemoTools = (
         visibility: visibilityEnum.optional().describe("New visibility level"),
         pinned: z.boolean().optional().describe("Pin or unpin the memo"),
         state: z.enum(["NORMAL", "ARCHIVED"]).optional().describe("Set to ARCHIVED to archive, NORMAL to restore"),
-        createTime: z.string().optional().describe("Override the memo's creation time. ISO 8601. Must not be in the future. If both createTime and updateTime are set, createTime must be <= updateTime."),
-        updateTime: z.string().optional().describe("Override the memo's update time. ISO 8601. Must not be in the future. If both createTime and updateTime are set, updateTime must be >= createTime."),
-        preserveUpdateTime: z.boolean().optional().describe("When true, the memo's update time will not change. Use for formatting or style-only edits"),
+        createTime: z.string().optional().describe("Override the memo's creation time. ISO 8601. Must not be in the future."),
+        updateTime: z.string().optional().describe("Override the memo's update time. ISO 8601. Must not be in the future."),
+        preserveUpdateTime: z.boolean().optional().describe("When true, the memo's update time will not change"),
       },
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -233,45 +234,20 @@ export const registerMemoTools = (
       const body: Record<string, unknown> = {};
       const updateMaskPaths: string[] = [];
 
-      if (content !== undefined) {
-        body.content = content;
-        updateMaskPaths.push("content");
-      }
-      if (visibility !== undefined) {
-        body.visibility = visibility;
-        updateMaskPaths.push("visibility");
-      }
-      if (pinned !== undefined) {
-        body.pinned = pinned;
-        updateMaskPaths.push("pinned");
-      }
-      if (state !== undefined) {
-        body.rowStatus = state === "ARCHIVED" ? "ARCHIVED" : "ACTIVE";
-        updateMaskPaths.push("row_status");
-      }
-      if (createTime !== undefined) {
-        body.createTime = parseToRFC3339(createTime, "createTime");
-        updateMaskPaths.push("create_time");
-      }
-      if (updateTime !== undefined) {
-        body.updateTime = parseToRFC3339(updateTime, "updateTime");
-        updateMaskPaths.push("update_time");
-      }
+      if (content !== undefined) { body.content = content; updateMaskPaths.push("content"); }
+      if (visibility !== undefined) { body.visibility = visibility; updateMaskPaths.push("visibility"); }
+      if (pinned !== undefined) { body.pinned = pinned; updateMaskPaths.push("pinned"); }
+      if (state !== undefined) { body.rowStatus = state === "ARCHIVED" ? "ARCHIVED" : "ACTIVE"; updateMaskPaths.push("row_status"); }
+      if (createTime !== undefined) { body.createTime = parseToRFC3339(createTime, "createTime"); updateMaskPaths.push("create_time"); }
+      if (updateTime !== undefined) { body.updateTime = parseToRFC3339(updateTime, "updateTime"); updateMaskPaths.push("update_time"); }
 
       if (updateMaskPaths.length === 0) {
         return {
-          content: [
-            {
-              type: "text" as const,
-              text: "No fields to update. Provide at least one of: content, visibility, pinned, state, createTime, updateTime.",
-            },
-          ],
+          content: [{ type: "text" as const, text: "No fields to update. Provide at least one of: content, visibility, pinned, state, createTime, updateTime." }],
         };
       }
 
-      const params: Record<string, string> = {
-        updateMask: updateMaskPaths.join(","),
-      };
+      const params: Record<string, string> = { updateMask: updateMaskPaths.join(",") };
       if (preserveUpdateTime) params.preserveUpdateTime = "true";
       const memo = await client.patch<Memo>(`/api/v1/memos/${numericId}`, body, params);
       const url = `${client.baseUrl}/m/${memo.uid}`;

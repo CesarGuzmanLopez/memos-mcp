@@ -12,6 +12,8 @@ memos-mcp is an MCP (Model Context Protocol) server for [Memos](https://github.c
 # Install dependencies
 pnpm install
 
+
+
 # Build (TypeScript → dist/)
 pnpm build
 

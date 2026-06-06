@@ -1,4 +1,5 @@
-export type Visibility = "PRIVATE" | "PROTECTED" | "PUBLIC";
+export const VALID_VISIBILITIES = ["PRIVATE", "PROTECTED", "PUBLIC"] as const;
+export type Visibility = (typeof VALID_VISIBILITIES)[number];
 export type RowStatus = "ACTIVE" | "ARCHIVED";
 export type MemoRelationType = "REFERENCE" | "COMMENT";
 export type ReviewSource =
