@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { MemosClient } from "../client.js";
 import type { Memo, Visibility } from "../types.js";
-import { summarizeMemo, resolveToNumericId } from "./utils.js";
+import { summarizeMemo, resolveToMemoId } from "./utils.js";
 
 type OrderByField = "create_time" | "update_time";
 
@@ -204,10 +204,12 @@ export const registerMemoTools = (
       if (createTime) {
         body.createTime = parseToRFC3339(createTime, "createTime");
       }
-      const memo = await client.post<Memo>("/api/v1/memos", body);
-      const id = memo.name?.match(/^memos\/(\d+)$/)?.[1];
-      const url = `${client.baseUrl}/m/${memo.uid}`;
-      const result = { id: id ? Number(id) : undefined, uid: memo.uid, visibility: memo.visibility, url };
+      const memo = await client.post("/api/v1/memos", body) as Record<string, unknown>;
+      const name = memo.name as string;
+      const match = name?.match(/^memos\/(.+)$/);
+      const memoId = match ? match[1] : undefined;
+      const url = memoId ? `${client.baseUrl}/m/${memoId}` : `${client.baseUrl}`;
+      const result = { id: memoId, visibility: memo.visibility, url };
       return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
     }
   );
@@ -229,7 +231,7 @@ export const registerMemoTools = (
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ id, content, visibility, pinned, state, createTime, updateTime, preserveUpdateTime }) => {
-      const numericId = await resolveToNumericId(client, id);
+      const memoId = await resolveToMemoId(client, id);
 
       const body: Record<string, unknown> = {};
       const updateMaskPaths: string[] = [];
@@ -249,8 +251,8 @@ export const registerMemoTools = (
 
       const params: Record<string, string> = { updateMask: updateMaskPaths.join(",") };
       if (preserveUpdateTime) params.preserveUpdateTime = "true";
-      const memo = await client.patch<Memo>(`/api/v1/memos/${numericId}`, body, params);
-      const url = `${client.baseUrl}/m/${memo.uid}`;
+      const memo = await client.patch<Memo>(`/api/v1/memos/${memoId}`, body, params);
+      const url = `${client.baseUrl}/m/${memoId}`;
       return { content: [{ type: "text" as const, text: `Memo updated: ${url}` }] };
     }
   );
@@ -265,8 +267,8 @@ export const registerMemoTools = (
       annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ id }) => {
-      const numericId = await resolveToNumericId(client, id);
-      await client.delete(`/api/v1/memos/${numericId}`);
+      const memoId = await resolveToMemoId(client, id);
+      await client.delete(`/api/v1/memos/${memoId}`);
       return { content: [{ type: "text" as const, text: `Memo ${id} deleted.` }] };
     }
   );

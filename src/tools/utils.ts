@@ -47,13 +47,20 @@ export function summarizeMemo(memo: Record<string, unknown>) {
   return summary;
 }
 
-// Resolver un ID (numérico o UID string) a un ID numérico
-export async function resolveToNumericId(client: MemosClient, id: string): Promise<number> {
+// Resolver un memo ID a su identifier usable en la API
+// Memos 0.29.1 usa UIDs (memos/abc123) en vez de IDs numéricos
+export async function resolveToMemoId(client: MemosClient, id: string): Promise<string> {
+  // Si ya es numérico, usarlo directo
   if (/^\d+$/.test(id)) {
-    return parseInt(id, 10);
+    return id;
   }
-  const memo = await client.get<Memo>(`/api/v1/memos/${id}`);
-  const match = memo.name.match(/^memos\/(\d+)$/);
+  // Si ya parece un UID (letras + números, largo > 5), usarlo directo
+  if (/^[a-zA-Z0-9_-]{6,}$/.test(id)) {
+    return id;
+  }
+  // Intentar buscar por el path completo
+  const memo = await client.get<{ name: string }>(`/api/v1/memos/${id}`);
+  const match = memo.name.match(/^memos\/(.+)$/);
   if (!match) throw new Error(`Unexpected memo name format: ${memo.name}`);
-  return parseInt(match[1], 10);
+  return match[1];
 }

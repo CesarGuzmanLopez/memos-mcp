@@ -2,30 +2,30 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { MemosClient } from "../client.js";
 import type { MemoRelation } from "../types.js";
-import { resolveToNumericId } from "./utils.js";
+import { resolveToMemoId } from "./utils.js";
 
-function extractId(memoRef: unknown): number | undefined {
+function extractId(memoRef: unknown): string | undefined {
   const name = typeof memoRef === "string" ? memoRef : (memoRef as Record<string, unknown>)?.name as string;
   if (!name || typeof name !== "string") return undefined;
-  const match = name.match(/^memos\/(\d+)$/);
-  return match ? parseInt(match[1], 10) : undefined;
+  const match = name.match(/^memos\/(.+)$/);
+  return match ? match[1] : undefined;
 }
 
 interface Edge {
-  from: number;
-  to: number;
+  from: string;
+  to: string;
   type: string;
 }
 
 async function buildRelationGraph(
   client: MemosClient,
-  startId: number,
+  startId: string,
   maxDepth: number
-): Promise<{ nodes: number[]; edges: Edge[] }> {
-  const visited = new Set<number>();
+): Promise<{ nodes: string[]; edges: Edge[] }> {
+  const visited = new Set<string>();
   const edges: Edge[] = [];
   const edgeSet = new Set<string>();
-  const queue: { id: number; depth: number }[] = [{ id: startId, depth: 0 }];
+  const queue: { id: string; depth: number }[] = [{ id: startId, depth: 0 }];
 
   while (queue.length > 0) {
     const { id, depth } = queue.shift()!;
@@ -73,18 +73,14 @@ export const registerRelationTools = (server: McpServer, client: MemosClient) =>
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ id, depth }) => {
-      const numericId = await resolveToNumericId(client, id);
-      const { nodes, edges } = await buildRelationGraph(client, numericId, depth);
+      const memoId = await resolveToMemoId(client, id);
+      const { nodes, edges } = await buildRelationGraph(client, memoId, depth);
 
       if (edges.length === 0) {
         return { content: [{ type: "text" as const, text: "No relations found." }] };
       }
 
-      const output = {
-        startNode: numericId,
-        nodes,
-        edges,
-      };
+      const output = { startNode: memoId, nodes, edges };
       return { content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }] };
     }
   );
@@ -106,20 +102,20 @@ export const registerRelationTools = (server: McpServer, client: MemosClient) =>
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ id, action, targetIds }) => {
-      const numericId = await resolveToNumericId(client, id);
+      const memoId = await resolveToMemoId(client, id);
 
       const resolvedTargets = await Promise.all(
-        targetIds.map((t) => resolveToNumericId(client, t))
+        targetIds.map((t) => resolveToMemoId(client, t))
       );
 
       const current = await client.get<{ relations: MemoRelation[] }>(
-        `/api/v1/memos/${numericId}/relations`
+        `/api/v1/memos/${memoId}/relations`
       );
       const existing = (current.relations || []).filter(
-        (r) => extractId(r.memo) === numericId && r.type === "REFERENCE"
+        (r) => extractId(r.memo) === memoId && r.type === "REFERENCE"
       );
 
-      let finalIds: number[];
+      let finalIds: string[];
       if (action === "add") {
         const existingIds = new Set(existing.map((r) => extractId(r.relatedMemo)));
         finalIds = [
@@ -135,21 +131,16 @@ export const registerRelationTools = (server: McpServer, client: MemosClient) =>
 
       const body = {
         relations: finalIds.map((targetId) => ({
-          memo: { name: `memos/${numericId}` },
+          memo: { name: `memos/${memoId}` },
           relatedMemo: { name: `memos/${targetId}` },
           type: "REFERENCE",
         })),
       };
-      await client.patch(`/api/v1/memos/${numericId}/relations`, body);
+      await client.patch(`/api/v1/memos/${memoId}/relations`, body);
 
       const verb = action === "add" ? "added" : "removed";
       return {
-        content: [
-          {
-            type: "text" as const,
-            text: `${resolvedTargets.length} reference(s) ${verb}. Memo ${id} now has ${finalIds.length} outgoing reference(s).`,
-          },
-        ],
+        content: [{ type: "text" as const, text: `${resolvedTargets.length} reference(s) ${verb}. Memo ${id} now has ${finalIds.length} outgoing reference(s).` }],
       };
     }
   );
