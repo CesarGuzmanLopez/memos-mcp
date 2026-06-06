@@ -57,12 +57,13 @@ export const registerResourceTools = (server: McpServer, client: MemosClient) =>
         body.memo = `memos/${memoId}`;
       }
       const resource = await client.post<Resource>("/api/v1/resources", body);
-      const id = resource.name?.match(/^resources\/(\d+)$/)?.[1];
+      const id = resource.name?.match(/^resources\/(.+)$/)?.[1];
+      const resFilename = resource.filename || "unknown";
       return {
         content: [
           {
             type: "text" as const,
-            text: `Resource uploaded: id=${id}, filename="${resource.filename}"`,
+            text: `Resource uploaded: id=${id || "unknown"}, filename="${resFilename}"`,
           },
         ],
       };

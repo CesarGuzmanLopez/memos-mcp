@@ -117,15 +117,18 @@ export const registerRelationTools = (server: McpServer, client: MemosClient) =>
 
       let finalIds: string[];
       if (action === "add") {
-        const existingIds = new Set(existing.map((r) => extractId(r.relatedMemo)));
+        const existingIds = new Set(
+          existing.map((r) => extractId(r.relatedMemo)).filter((id): id is string => id !== undefined)
+        );
         finalIds = [
-          ...existing.map((r) => extractId(r.relatedMemo)!),
+          ...existing.map((r) => extractId(r.relatedMemo)).filter((id): id is string => id !== undefined),
           ...resolvedTargets.filter((t) => !existingIds.has(t)),
         ];
       } else {
         const removeSet = new Set(resolvedTargets);
         finalIds = existing
-          .map((r) => extractId(r.relatedMemo)!)
+          .map((r) => extractId(r.relatedMemo))
+          .filter((id): id is string => id !== undefined)
           .filter((rid) => !removeSet.has(rid));
       }
 

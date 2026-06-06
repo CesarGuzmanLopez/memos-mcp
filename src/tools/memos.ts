@@ -206,9 +206,11 @@ export const registerMemoTools = (
       }
       const memo = await client.post("/api/v1/memos", body) as Record<string, unknown>;
       const name = memo.name as string;
-      const match = name?.match(/^memos\/(.+)$/);
+      if (!name) throw new Error("Create memo failed: API returned no memo name");
+      const match = name.match(/^memos\/(.+)$/);
       const memoId = match ? match[1] : undefined;
-      const url = memoId ? `${client.baseUrl}/m/${memoId}` : `${client.baseUrl}`;
+      if (!memoId) throw new Error(`Create memo failed: unexpected name format: ${name}`);
+      const url = `${client.baseUrl}/m/${memoId}`;
       const result = { id: memoId, visibility: memo.visibility, url };
       return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
     }

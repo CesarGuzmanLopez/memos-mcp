@@ -60,6 +60,7 @@ export async function resolveToMemoId(client: MemosClient, id: string): Promise<
   }
   // Intentar buscar por el path completo
   const memo = await client.get<{ name: string }>(`/api/v1/memos/${id}`);
+  if (!memo?.name) throw new Error(`Memo not found: ${id}`);
   const match = memo.name.match(/^memos\/(.+)$/);
   if (!match) throw new Error(`Unexpected memo name format: ${memo.name}`);
   return match[1];

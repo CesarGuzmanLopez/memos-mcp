@@ -99,7 +99,9 @@ export class MemosClient {
       const body = await res.text();
       throw new Error(`GET ${path} failed (${res.status}): ${body}`);
     }
-    return res.json() as Promise<T>;
+    const text = await res.text();
+    if (!text) return undefined as T;
+    return JSON.parse(text) as T;
   }
 
   async post<T>(path: string, body?: unknown): Promise<T> {
@@ -112,7 +114,9 @@ export class MemosClient {
       const text = await res.text();
       throw new Error(`POST ${path} failed (${res.status}): ${text}`);
     }
-    return res.json() as Promise<T>;
+    const text = await res.text();
+    if (!text) return undefined as T;
+    return JSON.parse(text) as T;
   }
 
   async patch<T>(path: string, body?: unknown, params?: Record<string, string>): Promise<T> {
@@ -133,7 +137,9 @@ export class MemosClient {
       const text = await res.text();
       throw new Error(`PATCH ${path} failed (${res.status}): ${text}`);
     }
-    return res.json() as Promise<T>;
+    const text = await res.text();
+    if (!text) return undefined as T;
+    return JSON.parse(text) as T;
   }
 
   async delete<T = unknown>(path: string): Promise<T> {

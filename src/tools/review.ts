@@ -16,9 +16,10 @@ async function parallelLimit<T>(
   const executing = new Set<Promise<void>>();
 
   tasks.forEach((task, index) => {
-    const p = task().then((result) => {
-      results[index] = result;
-    });
+    const p = task().then(
+      (result) => { results[index] = result; },
+      () => { /* Task failed, leave undefined */ }
+    );
     const wrapped = p.then(() => { executing.delete(wrapped); });
     executing.add(wrapped);
 
@@ -61,7 +62,7 @@ export const registerReviewTools = (server: McpServer, client: MemosClient) => {
         ? parseDateToTimestamp(endDate, "endDate")
         : startTs + 86400;
 
-      const filter = `creator == "${currentUser}" && created_ts >= ${startTs} && created_ts <= ${endTs}`;
+      const filter = `creator == "${currentUser.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}" && created_ts >= ${startTs} && created_ts <= ${endTs}`;
 
       const params: Record<string, string> = {
         pageSize: String(pageSize),
@@ -114,7 +115,7 @@ export const registerReviewTools = (server: McpServer, client: MemosClient) => {
           const yearStart = Math.floor(Date.UTC(year, month - 1, day) / 1000);
           const yearEnd = yearStart + 86400;
 
-          const filter = `creator == "${currentUser}" && created_ts >= ${yearStart} && created_ts < ${yearEnd}`;
+          const filter = `creator == "${currentUser.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}" && created_ts >= ${yearStart} && created_ts < ${yearEnd}`;
 
           const result = await client.get<{ memos: Memo[] }>("/api/v1/memos", {
             pageSize: "10",
