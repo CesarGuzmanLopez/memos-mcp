@@ -48,7 +48,8 @@ Scenarios:
 - "What did I do on June 15?" → on_day(date="2025-06-15")
 - "What's on my agenda today?" → on_day(date="today")
 - "What was I working on last month?" → on_day(date="2025-05-06")
-- "Do I have anything planned for next week?" → on_day(date="2025-06-13")
+- "Do I have anything planned for next week?" → on_day(date="next_monday")
+- "What happened yesterday?" → on_day(date="yesterday")
 
 The tool returns memos from that day plus this same day in previous years.
 
