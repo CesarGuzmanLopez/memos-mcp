@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { MemosClient } from "./client.js";
 import { registerMemoTools } from "./tools/memos.js";
 import { registerTagTools } from "./tools/tags.js";
-import { registerReviewTools } from "./tools/review.js";
+import { registerSearchTool } from "./tools/review.js";
 import { registerPrompts } from "./prompts/index.js";
 import { VALID_VISIBILITIES, type Visibility } from "./types.js";
 
@@ -24,7 +24,7 @@ export const createServerWithClient = (
 
   registerMemoTools(server, client, { defaultVisibility });
   registerTagTools(server, client);
-  registerReviewTools(server, client);
+  registerSearchTool(server, client);
   registerPrompts(server);
 
   return server;

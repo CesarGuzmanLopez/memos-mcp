@@ -8,7 +8,7 @@ export interface PromptDefinition {
 
 export const getPromptDefinitions = (): Record<string, PromptDefinition> => ({
   capture: {
-    description: "Quick-save a thought or note as a memo",
+    description: "Quick-save a thought, note, task, or idea as a memo",
     text: `Capture a new memo.
 
 Step 1: Use the create_memo tool with the content provided.
@@ -19,13 +19,13 @@ Example:
 create_memo(content="Had a great idea about #ai/agents", visibility="PRIVATE")`,
   },
   review: {
-    description: "Review memos from a specific time period",
+    description: "Review memos from a time period",
     text: `Review your memos from a time period.
 
-Step 1: Use search_memos_by_date with a date range.
-- "today": startDate = today, endDate = today
-- "this week": startDate = 7 days ago
-- "this month": startDate = 30 days ago
+Step 1: Use search with a date range.
+- "today": search(date="today")
+- "this week": search(date="this_week", week=true)
+- "this month": search(date="this_month")
 
 Step 2: Present each memo ONE AT A TIME.
 - Use get_memo to fetch full content
@@ -34,27 +34,23 @@ Step 2: Present each memo ONE AT A TIME.
 
 Step 3: After all memos, give a brief summary.
 
-Example tool calls:
-search_memos_by_date(startDate="2025-06-01", endDate="2025-06-06")
+Example:
+search(date="this_week", week=true)
 get_memo(id="42")`,
   },
   on_day: {
-    description: "Check memos for a specific date — past, present, or future",
-    text: `Check what happened or is planned for a specific day.
-
-Uses: on_day tool
+    description: "Check what happened or is planned for a specific date",
+    text: `Check memos for a specific day.
 
 Scenarios:
-- "What did I do on June 15?" → on_day(date="2025-06-15")
-- "What's on my agenda today?" → on_day(date="today")
-- "What was I working on last month?" → on_day(date="2025-05-06")
-- "Do I have anything planned for next week?" → on_day(date="next_monday")
-- "What happened yesterday?" → on_day(date="yesterday")
-
-The tool returns memos from that day plus this same day in previous years.
+- "What did I do on June 15?" → search(date="2025-06-15")
+- "What's on my agenda today?" → search(date="today")
+- "What was I working on last month?" → search(date="2025-05-06")
+- "Do I have anything planned for next week?" → search(date="next_week", week=true)
+- "What happened yesterday?" → search(date="yesterday")
 
 Example:
-on_day(date="2025-06-15", years=3)`,
+search(date="2025-06-15")`,
   },
   tag_overview: {
     description: "Analyze your tag system and suggest improvements",
@@ -72,7 +68,7 @@ Step 3: Present analysis:
 - Tags that could be merged
 - Suggestions for cleanup
 
-Example tool calls:
+Example:
 list_tags()
 list_tags(parent="work")`,
   },
@@ -81,7 +77,6 @@ list_tags(parent="work")`,
 export const registerPrompts = (server: McpServer) => {
   const defs = getPromptDefinitions();
 
-  // Prompt: capture
   server.registerPrompt(
     "capture",
     {
@@ -107,7 +102,6 @@ export const registerPrompts = (server: McpServer) => {
     }
   );
 
-  // Prompt: review
   server.registerPrompt(
     "review",
     {
@@ -117,44 +111,40 @@ export const registerPrompts = (server: McpServer) => {
       },
     },
     ({ period }) => {
-      const periodMap: Record<string, { days: number; label: string }> = {
-        today: { days: 1, label: "today" },
-        week: { days: 7, label: "the past week" },
-        month: { days: 30, label: "the past month" },
-        year: { days: 365, label: "the past year" },
+      const periodMap: Record<string, string> = {
+        today: "today",
+        week: "this_week",
+        month: "this_month",
+        year: "this_year",
       };
-      const { days, label } = periodMap[period];
-      const endDate = new Date().toISOString().split("T")[0];
-      const startDate = new Date(Date.now() - days * 86400000).toISOString().split("T")[0];
+      const dateExpr = periodMap[period];
+      const weekFlag = period === "week" || period === "year" ? ", week=true" : "";
 
       return {
         messages: [{
           role: "user",
-          content: { type: "text", text: `Review your memos from ${label}.\n\nUse these tool calls in order:\n1. search_memos_by_date(startDate="${startDate}", endDate="${endDate}")\n2. get_memo(id="<id>") for each memo, one at a time\n3. Wait for user confirmation between each memo\n4. Summarize when done` },
+          content: { type: "text", text: `Review your memos from ${period}.\n\n1. search(date="${dateExpr}"${weekFlag})\n2. get_memo(id="<id>") for each memo, one at a time\n3. Wait for user confirmation between each\n4. Summarize when done` },
         }],
       };
     }
   );
 
-  // Prompt: on_day
   server.registerPrompt(
     "on_day",
     {
       description: defs.on_day.description,
       argsSchema: {
-        date: z.string().describe("Date to check (ISO 8601 e.g. '2025-06-15') or 'today'"),
-        years: z.number().int().min(1).max(10).default(5).describe("Also check this day in previous N years"),
+        date: z.string().describe("Date to check (ISO 8601, 'today', 'yesterday', 'next_monday', etc.)"),
       },
     },
-    ({ date, years }) => ({
+    ({ date }) => ({
       messages: [{
         role: "user",
-        content: { type: "text", text: `Check what happened or is planned for ${date}.\n\nUse: on_day(date="${date}", years=${years})\n\nPresent:\n- Memos from the target date (agenda/past notes)\n- This same day in previous years (if any)\n- Group by year, most recent first` },
+        content: { type: "text", text: `Check what happened or is planned for ${date}.\n\nUse: search(date="${date}")\nPresent the memos found, grouped by date.` },
       }],
     })
   );
 
-  // Prompt: tag_overview
   server.registerPrompt(
     "tag_overview",
     {
@@ -163,7 +153,7 @@ export const registerPrompts = (server: McpServer) => {
     () => ({
       messages: [{
         role: "user",
-        content: { type: "text", text: `Analyze my tag organization.\n\nUse these tool calls:\n1. list_tags() for top-level tags\n2. list_tags(parent="<tag>") for tags with hasChildren=true\n3. Present: hierarchy, usage patterns, cleanup suggestions` },
+        content: { type: "text", text: `Analyze my tag organization.\n\n1. list_tags() for top-level tags\n2. list_tags(parent="<tag>") for children\n3. Present: hierarchy, usage, cleanup suggestions` },
       }],
     })
   );
