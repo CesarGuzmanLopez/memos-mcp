@@ -1,10 +1,21 @@
 # memos-mcp
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for [Memos](https://github.com/chriscurrycc/memos) — a self-hosted note-taking service.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that turns [Memos](https://github.com/chriscurrycc/memos) into a **multi-purpose database** for your AI assistants — notes, projects, tasks, agendas, knowledge base, and more.
 
 [中文文档](README_zh.md)
 
-Enables AI assistants (Claude Code, Claude Desktop, Cursor, etc.) to read and write your memos through a standardized interface.
+## What is this?
+
+**mcp-mcp** is a bridge between AI assistants and your Memos instance. Instead of context windows that forget, your AI has a **persistent memory database** it can query, create, and organize notes in.
+
+Think of it as:
+- 📝 **Personal knowledge base** — capture ideas, research, learnings
+- 📋 **Task manager** — to-dos, checklists, project tracking
+- 📅 **Agenda/planner** — schedules, meeting notes, deadlines
+- 🏗️ **Project database** — specs, decisions, retrospectives
+- 🔖 **Bookmark system** — save links, quotes, references
+
+Your AI assistant can search by date, filter by tags, create notes on the fly, and query your entire history — all through natural language.
 
 ## Setup
 
@@ -14,32 +25,25 @@ Enables AI assistants (Claude Code, Claude Desktop, Cursor, etc.) to read and wr
 - A running Memos instance
 - A Memos access token (Settings → Access Tokens)
 
-### Environment Variables
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `MEMOS_URL` | Yes | Your Memos instance URL |
-| `MEMOS_TOKEN` | Yes | Memos access token |
-| `MEMOS_DEFAULT_VISIBILITY` | No | Default visibility for new memos (`PRIVATE`, `PROTECTED`, `PUBLIC`). Defaults to `PRIVATE` |
-
-### Claude Code
+### HTTP Mode (OpenCode, LibreChat, etc.)
 
 ```bash
-claude mcp add --scope user memos -e MEMOS_URL=https://your-memos-instance.com -e MEMOS_TOKEN=your-access-token -- npx -y @chriscurrycc/memos-mcp
+# Start the HTTP server
+MEMOS_URL=https://your-memos.com npx -y github:CesarGuzmanLopez/memos-mcp --http
 ```
 
-### Claude Desktop
+Each client sends its own Bearer token — no token in the server config.
 
-Add to your `claude_desktop_config.json`:
+### Stdio Mode (Claude Desktop/Code)
 
 ```json
 {
   "mcpServers": {
     "memos": {
       "command": "npx",
-      "args": ["-y", "@chriscurrycc/memos-mcp"],
+      "args": ["-y", "github:CesarGuzmanLopez/memos-mcp"],
       "env": {
-        "MEMOS_URL": "https://your-memos-instance.com",
+        "MEMOS_URL": "https://your-memos.com",
         "MEMOS_TOKEN": "your-access-token"
       }
     }
@@ -47,113 +51,38 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-### With 1Password (recommended)
-
-Store your token securely in 1Password — no plaintext secrets on disk.
-
-1. Save the token to 1Password:
-
-```bash
-op item create --category=apiCredential --title="memos-api" token=your-access-token "valid from[date]=2026-01-01" "expires[date]=2026-02-01"
-```
-
-2. Configure with `op run` to inject the token at runtime:
-
-**Claude Code:**
-
-```bash
-claude mcp add --scope user memos -e MEMOS_URL=https://your-memos-instance.com -e MEMOS_TOKEN=op://Personal/memos-api/token -- op run --no-masking -- npx -y @chriscurrycc/memos-mcp
-```
-
-**Claude Desktop:**
-
-```json
-{
-  "mcpServers": {
-    "memos": {
-      "command": "op",
-      "args": ["run", "--no-masking", "--", "npx", "-y", "@chriscurrycc/memos-mcp"],
-      "env": {
-        "MEMOS_URL": "https://your-memos-instance.com",
-        "MEMOS_TOKEN": "op://Personal/memos-api/token"
-      }
-    }
-  }
-}
-```
-
-## Tools
-
-### Memos
+## Tools (7)
 
 | Tool | Description |
 |------|-------------|
-| `list_memos` | Search and list memos with structured filters (keyword, tags, date range, visibility, pinned, content properties, etc.) and optional `orderBy` (create_time / update_time; defaults to the workspace setting) |
-| `get_memo` | Get a single memo by numeric ID or UID string |
-| `create_memo` | Create a new memo with markdown content, optional `createTime` to backdate |
-| `update_memo` | Update content, visibility, pin, archive state, or override `createTime` / `updateTime`; optional `preserveUpdateTime` for style-only edits |
-| `delete_memo` | Permanently delete a memo |
+| `search` | Search memos by date, tags, or content. Supports relative dates (today, yesterday, next_monday, this_week, 3_days_ago) and ranges |
+| `list_memos` | List memos with filters (tags, visibility, pinned, content properties) |
+| `get_memo` | Get a single memo's full content |
+| `create_memo` | Create a memo with markdown content and tags |
+| `update_memo` | Update memo content, visibility, or pin status |
+| `delete_memo` | Delete a memo permanently |
+| `list_tags` | List all tags with usage counts and hierarchy |
 
-### Tags
+### Search examples
 
-| Tool | Description |
-|------|-------------|
-| `list_tags` | List tags with usage counts, hierarchy support, and pinned/emoji metadata |
-| `update_tag` | Update a tag's pinned status or emoji |
-| `rename_tag` | Rename a tag across all memos |
+| What you want | Tool call |
+|---|---|
+| "What did I do yesterday?" | `search(date="yesterday")` |
+| "What's on my agenda today?" | `search(date="today")` |
+| "Notes from last week" | `search(date="last_week", week=true)` |
+| "Show me #project notes" | `search(date="this_month", tags=["project"])` |
+| "Find notes about API design" | `search(date="this_year", query="API design")` |
+| "What happened on June 15?" | `search(date="2025-06-15")` |
+| "March to April overview" | `search(date="2025-03-01", endDate="2025-04-30")` |
 
-### Resources
-
-| Tool | Description |
-|------|-------------|
-| `list_resources` | List all resources (attachments) |
-| `upload_resource` | Upload a file (base64 encoded), with optional memo linking |
-| `delete_resource` | Delete a resource |
-
-### Relations
-
-| Tool | Description |
-|------|-------------|
-| `list_memo_relations` | List memo relations with recursive graph traversal (depth 1-5) |
-| `set_memo_relations` | Add or remove REFERENCE relations between memos |
-
-### Review
-
-| Tool | Description |
-|------|-------------|
-| `get_review_memos` | Get today's spaced-repetition review batch |
-| `complete_review` | Mark the current review batch as completed |
-| `get_on_this_day_memos` | Get memos created on this day in previous years, grouped by year |
-| `update_review_setting` | Update review preferences (batch size, tag filters) |
-
-## Prompts
+## Prompts (4)
 
 | Prompt | Description |
 |--------|-------------|
-| `capture` | Quick-save a thought as a memo |
-| `review` | Start a guided spaced-repetition review session |
-| `on_this_day` | See memos from this day in previous years |
-| `digest` | Summarize memo activity for a time period (today/week/month) |
-| `tag_overview` | Review your tag system and organization |
-| `relation_graph` | Explore the relation graph starting from a memo |
-
-## Resources
-
-| URI Template | Description |
-|-------------|-------------|
-| `memo://memos/{uid}` | Get a memo by UID as markdown |
-
-## Development
-
-```bash
-git clone https://github.com/chriscurrycc/memos-mcp.git
-cd memos-mcp
-pnpm install
-pnpm build
-
-# Run in dev mode
-MEMOS_URL=http://localhost:5230 MEMOS_TOKEN=your-token pnpm dev
-```
+| `capture` | Quick-save a thought, task, or idea |
+| `review` | Review memos from a time period |
+| `on_day` | Check what happened or is planned for a specific date |
+| `tag_overview` | Analyze your tag system |
 
 ## License
 
