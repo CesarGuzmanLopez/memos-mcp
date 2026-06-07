@@ -10,6 +10,17 @@ const args = process.argv.slice(2);
 const isHttpMode = args.includes("--http") || args.includes("-h");
 const showHelp = args.includes("--help") || args.includes("-?");
 
+// Parse port argument
+let customPort: number | undefined;
+const portIndex = args.indexOf("--port");
+if (portIndex !== -1 && args[portIndex + 1]) {
+  customPort = parseInt(args[portIndex + 1], 10);
+  if (isNaN(customPort) || customPort < 1 || customPort > 65535) {
+    console.error("Invalid port. Use --port with a number between 1 and 65535.");
+    process.exit(1);
+  }
+}
+
 // Mostrar ayuda
 if (showHelp) {
   console.log(`
@@ -47,6 +58,10 @@ Examples:
 
 // Modo HTTP
 if (isHttpMode) {
+  // Override port if specified via CLI
+  if (customPort) {
+    process.env.HTTP_PORT = String(customPort);
+  }
   const config = loadConfig();
   console.log(`Starting memos-mcp in HTTP mode...`);
   console.log(`Server will accept requests at:`);

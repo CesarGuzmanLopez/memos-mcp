@@ -24,10 +24,9 @@ export function summarizeMemo(memo: Record<string, unknown>) {
   }
 
   const name = memo.name as string;
-  const id = name?.match(/^memos\/(\d+)$/)?.[1];
 
   const summary: Record<string, unknown> = {
-    id: id ? Number(id) : undefined,
+    name: name,
     uid: memo.uid,
     createTime: memo.createTime,
     snippet,
