@@ -1,6 +1,16 @@
 export const VALID_VISIBILITIES = ["PRIVATE", "PROTECTED", "PUBLIC"] as const;
 export type Visibility = (typeof VALID_VISIBILITIES)[number];
 
+export interface Attachment {
+  name: string;
+  filename: string;
+  type: string;
+  size: string;
+  createTime: string;
+  externalLink?: string;
+  uiResourcePath?: string;
+}
+
 export interface Memo {
   name: string;
   uid: string;
@@ -12,7 +22,7 @@ export interface Memo {
   visibility: Visibility;
   tags: string[];
   pinned: boolean;
-  resources: unknown[];
+  attachments: Attachment[];
   relations: unknown[];
   reactions: unknown[];
   property?: MemoProperty;

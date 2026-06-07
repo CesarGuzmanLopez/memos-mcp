@@ -83,6 +83,7 @@ export const registerSearchTool = (server: McpServer, client: MemosClient) => {
         "  tags: ['work', 'meeting']  |  query: 'text search'",
         "  visibility: ['PRIVATE']     |  pinned: true",
         "  state: 'ARCHIVED'           |  hasIncompleteTasks: true",
+        "  hasAttachments: true        |  Only memos with file attachments",
         "",
         "No date = all memos. No filters = all memos.",
       ].join("\n"),
@@ -96,6 +97,7 @@ export const registerSearchTool = (server: McpServer, client: MemosClient) => {
         pinned: z.boolean().optional().describe("Only pinned memos"),
         state: z.enum(["NORMAL", "ARCHIVED"]).optional().describe("Filter by state"),
         hasIncompleteTasks: z.boolean().optional().describe("Only memos with incomplete tasks"),
+        hasAttachments: z.boolean().optional().describe("Only memos with file attachments"),
         pageSize: z.number().int().min(1).max(100).default(20).describe("Results per page"),
         pageToken: z.string().optional().describe("Pagination token"),
       },
@@ -159,9 +161,14 @@ export const registerSearchTool = (server: McpServer, client: MemosClient) => {
       if (args.pageToken) params.pageToken = args.pageToken;
 
       const result = await client.get<{ memos: Memo[]; nextPageToken?: string }>("/api/v1/memos", params);
-      const summaries = (result.memos || []).map((m) => summarizeMemo(m as unknown as Record<string, unknown>));
+      let summaries = (result.memos || []).map((m) => summarizeMemo(m as unknown as Record<string, unknown>));
 
-      const output: Record<string, unknown> = { memos: summaries, totalFound: result.memos?.length || 0 };
+      // Filter by attachments count (post-fetch since Memos API doesn't support this in CEL)
+      if (args.hasAttachments) {
+        summaries = summaries.filter((s) => (s.attachmentsCount as number) > 0);
+      }
+
+      const output: Record<string, unknown> = { memos: summaries, totalFound: summaries.length };
       if (result.nextPageToken) output.nextPageToken = result.nextPageToken;
 
       return { content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }] };

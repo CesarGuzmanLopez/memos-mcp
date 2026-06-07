@@ -24,10 +24,12 @@ export function summarizeMemo(memo: Record<string, unknown>) {
   }
 
   const name = memo.name as string;
+  // Extract UID from name field (format: "memos/uid")
+  const uid = name?.match(/^memos\/(.+)$/)?.[1] || "";
 
   const summary: Record<string, unknown> = {
     name: name,
-    uid: memo.uid,
+    uid: uid,
     createTime: memo.createTime,
     snippet,
     tags: memo.tags,
@@ -42,6 +44,12 @@ export function summarizeMemo(memo: Record<string, unknown>) {
 
   const property = compactProperty(memo.property as Record<string, unknown> | undefined);
   if (property) summary.property = property;
+
+  // Include attachments count if present
+  const attachments = memo.attachments as Array<unknown> | undefined;
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    summary.attachmentsCount = attachments.length;
+  }
 
   return summary;
 }
