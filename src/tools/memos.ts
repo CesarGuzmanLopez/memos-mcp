@@ -13,7 +13,7 @@ function parseToRFC3339(isoString: string, paramName: string): string {
 }
 
 function cleanMemo(memo: Record<string, unknown>): Record<string, unknown> {
-  const { name, nodes, snippet, creator, ...rest } = memo;
+  const { nodes, snippet, creator, ...rest } = memo;
   for (const key of ["resources", "relations", "reactions"]) {
     if (Array.isArray(rest[key]) && (rest[key] as unknown[]).length === 0) {
       delete rest[key];
