@@ -4,81 +4,16 @@ import { MemosClient } from "../client.js";
 import type { Memo, Visibility } from "../types.js";
 import { summarizeMemo, resolveToMemoId } from "./utils.js";
 
-type OrderByField = "create_time" | "update_time";
-
-interface FilterOptions {
-  creator?: string;
-  query?: string;
-  tags?: string[];
-  visibility?: Visibility[];
-  state?: "NORMAL" | "ARCHIVED";
-  pinned?: boolean;
-  hasLink?: boolean;
-  hasTaskList?: boolean;
-  hasCode?: boolean;
-  hasIncompleteTasks?: boolean;
-}
-
-function parseToUnixTimestamp(isoString: string, paramName: string): number {
-  const date = new Date(isoString);
-  if (isNaN(date.getTime())) {
-    throw new Error(
-      `Invalid date format for ${paramName}. Use ISO 8601 format (e.g., "2025-01-01" or "2025-01-01T00:00:00Z").`
-    );
-  }
-  return Math.floor(date.getTime() / 1000);
-}
-
 function parseToRFC3339(isoString: string, paramName: string): string {
   const date = new Date(isoString);
   if (isNaN(date.getTime())) {
-    throw new Error(
-      `Invalid date format for ${paramName}. Use ISO 8601 format (e.g., "2025-01-01" or "2025-01-01T00:00:00Z").`
-    );
+    throw new Error(`Invalid date for ${paramName}. Use ISO 8601 (e.g. "2025-01-01").`);
   }
   return date.toISOString();
 }
 
-function buildCelFilter(opts: FilterOptions): string {
-  const parts: string[] = [];
-
-  if (opts.creator) {
-    const escaped = opts.creator.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    parts.push(`creator == "${escaped}"`);
-  }
-
-  if (opts.query) {
-    const escaped = opts.query.replace(/"/g, '\\"');
-    parts.push(`content.contains("${escaped}")`);
-  }
-  if (opts.tags?.length) {
-    for (const tag of opts.tags) {
-      const escaped = tag.replace(/"/g, '\\"');
-      parts.push(`"${escaped}" in tags`);
-    }
-  }
-  if (opts.visibility?.length) {
-    const visList = opts.visibility.map((v) => `"${v}"`).join(", ");
-    parts.push(`visibility in [${visList}]`);
-  }
-  if (opts.state) {
-    parts.push(`row_status == "${opts.state === "ARCHIVED" ? "ARCHIVED" : "NORMAL"}"`);
-  }
-  if (opts.pinned !== undefined) {
-    parts.push(`pinned == ${opts.pinned}`);
-  }
-  if (opts.hasLink) parts.push(`has_link == true`);
-  if (opts.hasTaskList) parts.push(`has_task_list == true`);
-  if (opts.hasCode) parts.push(`has_code == true`);
-  if (opts.hasIncompleteTasks) parts.push(`has_incomplete_tasks == true`);
-
-  return parts.length > 0 ? parts.join(" && ") : "";
-}
-
 function cleanMemo(memo: Record<string, unknown>): Record<string, unknown> {
   const { name, nodes, snippet, creator, ...rest } = memo;
-  const id = (name as string)?.match(/^memos\/(\d+)$/)?.[1];
-  if (id) rest.id = Number(id);
   for (const key of ["resources", "relations", "reactions"]) {
     if (Array.isArray(rest[key]) && (rest[key] as unknown[]).length === 0) {
       delete rest[key];
@@ -98,101 +33,32 @@ export const registerMemoTools = (
 ) => {
   const visibilityEnum = z.enum(["PRIVATE", "PROTECTED", "PUBLIC"]);
 
+  // get — retrieve a single memo
   server.registerTool(
-    "list_memos",
+    "get",
     {
-      description: "Search and list memos. All filters are optional and combined with AND logic.",
+      description: "Get a single memo by ID or UID.",
       inputSchema: {
-        query: z.string().optional().describe("Keyword search in memo content"),
-        tags: z.array(z.string()).optional().describe("Filter by tags, e.g. [\"project\", \"todo\"]"),
-        visibility: z.array(visibilityEnum).optional().describe("Filter by visibility levels"),
-        state: z.enum(["NORMAL", "ARCHIVED"]).optional().describe("Filter by memo state"),
-        pinned: z.boolean().optional().describe("Filter by pinned status"),
-        startDate: z.string().optional().describe("Return memos created after this date (ISO 8601, e.g. \"2025-01-01\")"),
-        endDate: z.string().optional().describe("Return memos created before this date (ISO 8601, e.g. \"2025-03-01\")"),
-        hasLink: z.boolean().optional().describe("Filter to memos containing links"),
-        hasTaskList: z.boolean().optional().describe("Filter to memos containing task lists"),
-        hasCode: z.boolean().optional().describe("Filter to memos containing code blocks"),
-        hasIncompleteTasks: z.boolean().optional().describe("Filter to memos with incomplete tasks"),
-        orderBy: z.enum(["create_time", "update_time"]).optional().describe("Sort by create_time or update_time"),
-        pageSize: z.number().int().min(1).max(100).default(20).describe("Number of memos per page"),
-        pageToken: z.string().optional().describe("Token for fetching the next page"),
-      },
-      annotations: { readOnlyHint: true, openWorldHint: false },
-    },
-    async (args) => {
-      let creator: string | undefined;
-      let creatorWarning = "";
-      try {
-        creator = await client.getCurrentUser();
-      } catch {
-        creatorWarning = "Note: Could not determine current user; showing all accessible memos.\n";
-      }
-
-      const orderByField: OrderByField = args.orderBy ?? "create_time";
-      const { startDate, endDate, ...filterArgs } = args;
-
-      // Build CEL filter
-      let filter = buildCelFilter({ creator, ...filterArgs });
-
-      // Add date filtering
-      if (startDate) {
-        const startTs = parseToUnixTimestamp(startDate, "startDate");
-        filter = filter ? `${filter} && created_ts >= ${startTs}` : `created_ts >= ${startTs}`;
-      }
-      if (endDate) {
-        const endTs = parseToUnixTimestamp(endDate, "endDate");
-        filter = filter ? `${filter} && created_ts <= ${endTs}` : `created_ts <= ${endTs}`;
-      }
-
-      const params: Record<string, string> = {
-        pageSize: String(args.pageSize),
-        orderBy: `${orderByField} desc`,
-      };
-      if (filter) params.filter = filter;
-      if (args.pageToken) params.pageToken = args.pageToken;
-
-      const result = await client.get<{ memos: Memo[]; nextPageToken?: string }>(
-        "/api/v1/memos",
-        params
-      );
-      const summaries = (result.memos || []).map((m) =>
-        summarizeMemo(m as unknown as Record<string, unknown>)
-      );
-      const output: Record<string, unknown> = { memos: summaries };
-      if (creatorWarning) output.warning = creatorWarning.trim();
-      if (result.nextPageToken) output.nextPageToken = result.nextPageToken;
-      return { content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }] };
-    }
-  );
-
-  server.registerTool(
-    "get_memo",
-    {
-      description: "Get a single memo by its numeric ID or UID string (the ID from the memo URL).",
-      inputSchema: {
-        id: z.string().min(1).describe("Memo identifier. Numeric ID (e.g. \"42\") or UID string (e.g. \"AjF4AQJayxvDj2mrWzFWuP\")"),
+        id: z.string().min(1).describe("Memo ID or UID"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ id }) => {
-      const path = /^\d+$/.test(id)
-        ? `/api/v1/memos/${id}`
-        : `/api/v1/memos/${id}`;
-      const memo = await client.get<Memo>(path);
+      const memo = await client.get<Memo>(`/api/v1/memos/${id}`);
       const cleaned = cleanMemo(memo as unknown as Record<string, unknown>);
       return { content: [{ type: "text" as const, text: JSON.stringify(cleaned, null, 2) }] };
     }
   );
 
+  // create — create a new memo
   server.registerTool(
-    "create_memo",
+    "create",
     {
-      description: "Create a new memo with markdown content.",
+      description: "Create a memo with markdown content. Use #hashtags for tags.",
       inputSchema: {
-        content: z.string().min(1).describe("Memo content in markdown. Tags can be included with #tagname syntax"),
-        visibility: visibilityEnum.optional().describe("Memo visibility. Omit to use the configured default"),
-        createTime: z.string().optional().describe("Backdate the memo. ISO 8601, e.g. \"2024-01-15\" or \"2024-01-15T10:00:00Z\". Must not be in the future."),
+        content: z.string().min(1).describe("Markdown content. Use #tag for tags."),
+        visibility: visibilityEnum.optional().describe("Visibility (default: configured default)"),
+        createTime: z.string().optional().describe("Backdate. ISO 8601."),
       },
       annotations: { destructiveHint: false, openWorldHint: false },
     },
@@ -201,70 +67,65 @@ export const registerMemoTools = (
         content,
         visibility: visibility ?? options.defaultVisibility,
       };
-      if (createTime) {
-        body.createTime = parseToRFC3339(createTime, "createTime");
-      }
+      if (createTime) body.createTime = parseToRFC3339(createTime, "createTime");
+
       const memo = await client.post("/api/v1/memos", body) as Record<string, unknown>;
       const name = memo.name as string;
-      if (!name) throw new Error("Create memo failed: API returned no memo name");
+      if (!name) throw new Error("Create failed: no memo name in response");
       const match = name.match(/^memos\/(.+)$/);
-      const memoId = match ? match[1] : undefined;
-      if (!memoId) throw new Error(`Create memo failed: unexpected name format: ${name}`);
-      const url = `${client.baseUrl}/m/${memoId}`;
-      const result = { id: memoId, visibility: memo.visibility, url };
-      return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+      const memoId = match?.[1];
+      if (!memoId) throw new Error(`Create failed: unexpected name format: ${name}`);
+
+      return { content: [{ type: "text" as const, text: JSON.stringify({ id: memoId, visibility: memo.visibility, url: `${client.baseUrl}/m/${memoId}` }) }] };
     }
   );
 
+  // update — modify an existing memo
   server.registerTool(
-    "update_memo",
+    "update",
     {
-      description: "Update an existing memo. Only the fields you provide will be modified.",
+      description: "Update memo fields. Only provided fields are changed.",
       inputSchema: {
-        id: z.string().min(1).describe("Memo identifier. Numeric ID or UID string"),
-        content: z.string().optional().describe("New memo content in markdown"),
-        visibility: visibilityEnum.optional().describe("New visibility level"),
-        pinned: z.boolean().optional().describe("Pin or unpin the memo"),
-        state: z.enum(["NORMAL", "ARCHIVED"]).optional().describe("Set to ARCHIVED to archive, NORMAL to restore"),
-        createTime: z.string().optional().describe("Override the memo's creation time. ISO 8601. Must not be in the future."),
-        updateTime: z.string().optional().describe("Override the memo's update time. ISO 8601. Must not be in the future."),
-        preserveUpdateTime: z.boolean().optional().describe("When true, the memo's update time will not change"),
+        id: z.string().min(1).describe("Memo ID or UID"),
+        content: z.string().optional().describe("New markdown content"),
+        visibility: visibilityEnum.optional().describe("New visibility"),
+        pinned: z.boolean().optional().describe("Pin/unpin"),
+        state: z.enum(["NORMAL", "ARCHIVED"]).optional().describe("Archive/restore"),
+        createTime: z.string().optional().describe("Override creation time. ISO 8601."),
+        updateTime: z.string().optional().describe("Override update time. ISO 8601."),
+        preserveUpdateTime: z.boolean().optional().describe("Don't change update time"),
       },
       annotations: { destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ id, content, visibility, pinned, state, createTime, updateTime, preserveUpdateTime }) => {
       const memoId = await resolveToMemoId(client, id);
-
       const body: Record<string, unknown> = {};
-      const updateMaskPaths: string[] = [];
+      const mask: string[] = [];
 
-      if (content !== undefined) { body.content = content; updateMaskPaths.push("content"); }
-      if (visibility !== undefined) { body.visibility = visibility; updateMaskPaths.push("visibility"); }
-      if (pinned !== undefined) { body.pinned = pinned; updateMaskPaths.push("pinned"); }
-      if (state !== undefined) { body.rowStatus = state === "ARCHIVED" ? "ARCHIVED" : "ACTIVE"; updateMaskPaths.push("row_status"); }
-      if (createTime !== undefined) { body.createTime = parseToRFC3339(createTime, "createTime"); updateMaskPaths.push("create_time"); }
-      if (updateTime !== undefined) { body.updateTime = parseToRFC3339(updateTime, "updateTime"); updateMaskPaths.push("update_time"); }
+      if (content !== undefined) { body.content = content; mask.push("content"); }
+      if (visibility !== undefined) { body.visibility = visibility; mask.push("visibility"); }
+      if (pinned !== undefined) { body.pinned = pinned; mask.push("pinned"); }
+      if (state !== undefined) { body.rowStatus = state === "ARCHIVED" ? "ARCHIVED" : "ACTIVE"; mask.push("row_status"); }
+      if (createTime !== undefined) { body.createTime = parseToRFC3339(createTime, "createTime"); mask.push("create_time"); }
+      if (updateTime !== undefined) { body.updateTime = parseToRFC3339(updateTime, "updateTime"); mask.push("update_time"); }
 
-      if (updateMaskPaths.length === 0) {
-        return {
-          content: [{ type: "text" as const, text: "No fields to update. Provide at least one of: content, visibility, pinned, state, createTime, updateTime." }],
-        };
-      }
+      if (mask.length === 0) return { content: [{ type: "text" as const, text: "No fields to update." }] };
 
-      const params: Record<string, string> = { updateMask: updateMaskPaths.join(",") };
+      const params: Record<string, string> = { updateMask: mask.join(",") };
       if (preserveUpdateTime) params.preserveUpdateTime = "true";
-      const memo = await client.patch<Memo>(`/api/v1/memos/${memoId}`, body, params);
-      const url = `${client.baseUrl}/m/${memoId}`;
-      return { content: [{ type: "text" as const, text: `Memo updated: ${url}` }] };
+
+      await client.patch(`/api/v1/memos/${memoId}`, body, params);
+      return { content: [{ type: "text" as const, text: `Memo updated: ${client.baseUrl}/m/${memoId}` }] };
     }
   );
 
+  // delete — remove a memo
   server.registerTool(
-    "delete_memo",
+    "delete",
     {
-      description: "Permanently delete a memo. This action cannot be undone.",
+      description: "Permanently delete a memo. Cannot be undone.",
       inputSchema: {
-        id: z.string().min(1).describe("Memo identifier. Numeric ID or UID string"),
+        id: z.string().min(1).describe("Memo ID or UID"),
       },
       annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },

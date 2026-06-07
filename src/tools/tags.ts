@@ -151,7 +151,7 @@ async function fetchTagsForUser(client: MemosClient): Promise<Map<string, number
 
 export const registerTagTools = (server: McpServer, client: MemosClient) => {
   server.registerTool(
-    "list_tags",
+    "tags",
     {
       description: [
         "List tags with usage counts extracted from your memo content.",

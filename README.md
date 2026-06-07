@@ -6,7 +6,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that t
 
 ## What is this?
 
-**mcp-mcp** is a bridge between AI assistants and your Memos instance. Instead of context windows that forget, your AI has a **persistent memory database** it can query, create, and organize notes in.
+**memos-mcp** is a bridge between AI assistants and your Memos instance. Instead of context windows that forget, your AI has a **persistent memory database** it can query, create, and organize notes in.
 
 Think of it as:
 - 📝 **Personal knowledge base** — capture ideas, research, learnings
@@ -28,7 +28,6 @@ Your AI assistant can search by date, filter by tags, create notes on the fly, a
 ### HTTP Mode (OpenCode, LibreChat, etc.)
 
 ```bash
-# Start the HTTP server
 MEMOS_URL=https://your-memos.com npx -y github:CesarGuzmanLopez/memos-mcp --http
 ```
 
@@ -51,17 +50,15 @@ Each client sends its own Bearer token — no token in the server config.
 }
 ```
 
-## Tools (7)
+## Tools (5)
 
 | Tool | Description |
 |------|-------------|
-| `search` | Search memos by date, tags, or content. Supports relative dates (today, yesterday, next_monday, this_week, 3_days_ago) and ranges |
-| `list_memos` | List memos with filters (tags, visibility, pinned, content properties) |
-| `get_memo` | Get a single memo's full content |
-| `create_memo` | Create a memo with markdown content and tags |
-| `update_memo` | Update memo content, visibility, or pin status |
-| `delete_memo` | Delete a memo permanently |
-| `list_tags` | List all tags with usage counts and hierarchy |
+| `search` | Search memos by date, tags, content, visibility, pinned status. Supports relative dates and ranges |
+| `get` | Get a single memo's full content |
+| `create` | Create a memo with markdown content and #hashtags |
+| `update` | Update memo content, visibility, or pin status |
+| `tags` | List all tags with usage counts and hierarchy |
 
 ### Search examples
 
@@ -70,10 +67,11 @@ Each client sends its own Bearer token — no token in the server config.
 | "What did I do yesterday?" | `search(date="yesterday")` |
 | "What's on my agenda today?" | `search(date="today")` |
 | "Notes from last week" | `search(date="last_week", week=true)` |
-| "Show me #project notes" | `search(date="this_month", tags=["project"])` |
-| "Find notes about API design" | `search(date="this_year", query="API design")` |
+| "Show me #project notes" | `search(tags=["project"])` |
+| "Find notes about API design" | `search(query="API design")` |
 | "What happened on June 15?" | `search(date="2025-06-15")` |
 | "March to April overview" | `search(date="2025-03-01", endDate="2025-04-30")` |
+| "Show all my memos" | `search()` |
 
 ## Prompts (4)
 

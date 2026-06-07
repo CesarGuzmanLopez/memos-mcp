@@ -11,8 +11,6 @@ function escapeCel(str: string): string {
 function parseRelativeDate(input: string): Date {
   const now = new Date();
   const lower = input.toLowerCase().trim();
-
-  // Helper: normalize to midnight UTC
   const toMidnight = (d: Date) => { d.setUTCHours(0, 0, 0, 0); return d; };
 
   if (lower === "today") return toMidnight(new Date(now));
@@ -30,16 +28,14 @@ function parseRelativeDate(input: string): Date {
   if (nextDayMatch) {
     const targetDay = dayNames.indexOf(nextDayMatch[1]);
     const d = new Date(now);
-    const daysAhead = (targetDay - d.getUTCDay() + 7) % 7 || 7;
-    d.setUTCDate(d.getUTCDate() + daysAhead);
+    d.setUTCDate(d.getUTCDate() + ((targetDay - d.getUTCDay() + 7) % 7 || 7));
     return toMidnight(d);
   }
   const lastDayMatch = lower.match(/^last_(sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/);
   if (lastDayMatch) {
     const targetDay = dayNames.indexOf(lastDayMatch[1]);
     const d = new Date(now);
-    const daysBehind = (d.getUTCDay() - targetDay + 7) % 7 || 7;
-    d.setUTCDate(d.getUTCDate() - daysBehind);
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() - targetDay + 7) % 7 || 7));
     return toMidnight(d);
   }
 
@@ -54,7 +50,7 @@ function parseRelativeDate(input: string): Date {
 
   const parsed = new Date(input);
   if (!isNaN(parsed.getTime())) return parsed;
-  throw new Error(`Cannot parse date: "${input}". Use ISO 8601 (e.g. "2025-06-15"), "today", "tomorrow", "next_monday", "3_days_ago", etc.`);
+  throw new Error(`Cannot parse date: "${input}". Use ISO 8601, "today", "yesterday", "next_monday", "3_days_ago", etc.`);
 }
 
 function getWeekBoundaries(refDate: Date): { start: Date; end: Date } {
@@ -75,85 +71,97 @@ export const registerSearchTool = (server: McpServer, client: MemosClient) => {
     "search",
     {
       description: [
-        "Search memos by date, tags, or content. Single unified tool.",
+        "Search memos. Unified tool for date-based, tag-based, and content-based search.",
         "",
-        "Date inputs (accepts any of):",
-        "  ISO 8601: '2025-06-15'",
-        "  Relative: 'today', 'tomorrow', 'yesterday'",
+        "Date (optional, accepts):",
+        "  ISO: '2025-06-15'  |  Relative: 'today', 'yesterday', 'tomorrow'",
         "  Relative: 'next_monday', 'last_friday', 'next_week', 'this_month'",
         "  Relative: 'in_7_days', '3_days_ago', 'in_2_weeks'",
+        "  week=true: auto full week (Mon-Sun)",
         "",
-        "Use cases:",
-        "  Single day: search(date='yesterday')",
-        "  Date range: search(date='2025-03-01', endDate='2025-04-30')",
-        "  Full week: search(date='this_week', week=true)",
-        "  Next week: search(date='next_week', week=true)",
-        "  By tag: search(date='today', tags=['work'])",
-        "  Full text: search(date='this_month', query='reunión')",
-        "  Combined: search(date='last_week', week=true, tags=['project'])",
+        "Filters (all optional, combined with AND):",
+        "  tags: ['work', 'meeting']  |  query: 'text search'",
+        "  visibility: ['PRIVATE']     |  pinned: true",
+        "  state: 'ARCHIVED'           |  hasIncompleteTasks: true",
+        "",
+        "No date = all memos. No filters = all memos.",
       ].join("\n"),
       inputSchema: {
-        date: z.string().describe("Date to search from (ISO 8601 or relative: today, yesterday, next_monday, etc.)"),
-        endDate: z.string().optional().describe("End date for range search (ISO 8601 or relative). Omit for single-day."),
-        week: z.boolean().optional().describe("If true, auto-calculates full week (Mon-Sun) around the date"),
-        tags: z.array(z.string()).optional().describe("Filter by tags (e.g. ['work', 'meeting'])"),
-        query: z.string().optional().describe("Search text within memo content"),
-        pageSize: z.number().int().min(1).max(100).default(20).describe("Max results per page"),
-        pageToken: z.string().optional().describe("Pagination token for next page"),
+        date: z.string().optional().describe("Date (ISO 8601 or relative). Omit to search all memos."),
+        endDate: z.string().optional().describe("End date for range. Omit for single-day."),
+        week: z.boolean().optional().describe("Auto full week (Mon-Sun) around date"),
+        tags: z.array(z.string()).optional().describe("Filter by tags"),
+        query: z.string().optional().describe("Full-text search in content"),
+        visibility: z.array(z.enum(["PRIVATE", "PROTECTED", "PUBLIC"])).optional().describe("Filter by visibility"),
+        pinned: z.boolean().optional().describe("Only pinned memos"),
+        state: z.enum(["NORMAL", "ARCHIVED"]).optional().describe("Filter by state"),
+        hasIncompleteTasks: z.boolean().optional().describe("Only memos with incomplete tasks"),
+        pageSize: z.number().int().min(1).max(100).default(20).describe("Results per page"),
+        pageToken: z.string().optional().describe("Pagination token"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ date, endDate, week, tags, query, pageSize, pageToken }) => {
-      const currentUser = await client.getCurrentUser();
-
-      // Resolve date range
-      let startTs: number;
-      let endTs: number;
+    async (args) => {
+      let currentUser: string;
       try {
-        const refDate = parseRelativeDate(date);
-        if (week) {
-          const boundaries = getWeekBoundaries(refDate);
-          startTs = Math.floor(boundaries.start.getTime() / 1000);
-          endTs = Math.floor(boundaries.end.getTime() / 1000);
-        } else {
-          startTs = Math.floor(refDate.getTime() / 1000);
-          endTs = endDate ? Math.floor(parseRelativeDate(endDate).getTime() / 1000) : startTs + 86400;
-        }
-      } catch (e) {
-        return { content: [{ type: "text" as const, text: String(e) }] };
+        currentUser = await client.getCurrentUser();
+      } catch {
+        currentUser = "";
       }
 
       // Build CEL filter
-      const parts: string[] = [
-        `creator == "${escapeCel(currentUser)}"`,
-        `created_ts >= ${startTs}`,
-        `created_ts <= ${endTs}`,
-      ];
-      if (tags?.length) {
-        const tagList = tags.map((t) => `"${escapeCel(t)}"`).join(", ");
-        parts.push(`tag in [${tagList}]`);
-      }
-      if (query) {
-        parts.push(`content.contains("${escapeCel(query)}")`);
+      const parts: string[] = [];
+
+      if (currentUser) parts.push(`creator == "${escapeCel(currentUser)}"`);
+
+      // Date filtering
+      if (args.date) {
+        try {
+          const refDate = parseRelativeDate(args.date);
+          let startTs: number;
+          let endTs: number;
+          if (args.week) {
+            const b = getWeekBoundaries(refDate);
+            startTs = Math.floor(b.start.getTime() / 1000);
+            endTs = Math.floor(b.end.getTime() / 1000);
+          } else {
+            startTs = Math.floor(refDate.getTime() / 1000);
+            endTs = args.endDate ? Math.floor(parseRelativeDate(args.endDate).getTime() / 1000) : startTs + 86400;
+          }
+          parts.push(`created_ts >= ${startTs}`);
+          parts.push(`created_ts <= ${endTs}`);
+        } catch (e) {
+          return { content: [{ type: "text" as const, text: String(e) }] };
+        }
       }
 
+      // Other filters
+      if (args.tags?.length) {
+        const tagList = args.tags.map((t) => `"${escapeCel(t)}"`).join(", ");
+        parts.push(`tag in [${tagList}]`);
+      }
+      if (args.query) parts.push(`content.contains("${escapeCel(args.query)}")`);
+      if (args.visibility?.length) {
+        const visList = args.visibility.map((v) => `"${v}"`).join(", ");
+        parts.push(`visibility in [${visList}]`);
+      }
+      if (args.pinned !== undefined) parts.push(`pinned == ${args.pinned}`);
+      if (args.state) parts.push(`row_status == "${args.state === "ARCHIVED" ? "ARCHIVED" : "NORMAL"}"`);
+      if (args.hasIncompleteTasks) parts.push(`has_incomplete_tasks == true`);
+
+      const filter = parts.length > 0 ? parts.join(" && ") : "";
+
       const params: Record<string, string> = {
-        pageSize: String(pageSize),
-        filter: parts.join(" && "),
+        pageSize: String(args.pageSize),
+        orderBy: "create_time desc",
       };
-      if (pageToken) params.pageToken = pageToken;
+      if (filter) params.filter = filter;
+      if (args.pageToken) params.pageToken = args.pageToken;
 
       const result = await client.get<{ memos: Memo[]; nextPageToken?: string }>("/api/v1/memos", params);
       const summaries = (result.memos || []).map((m) => summarizeMemo(m as unknown as Record<string, unknown>));
 
-      const output: Record<string, unknown> = {
-        dateRange: {
-          start: new Date(startTs * 1000).toISOString().split("T")[0],
-          end: new Date(endTs * 1000).toISOString().split("T")[0],
-        },
-        memos: summaries,
-        totalFound: result.memos?.length || 0,
-      };
+      const output: Record<string, unknown> = { memos: summaries, totalFound: result.memos?.length || 0 };
       if (result.nextPageToken) output.nextPageToken = result.nextPageToken;
 
       return { content: [{ type: "text" as const, text: JSON.stringify(output, null, 2) }] };
