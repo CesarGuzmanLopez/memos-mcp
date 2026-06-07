@@ -12,19 +12,25 @@ function parseToRFC3339(isoString: string, paramName: string): string {
   return date.toISOString();
 }
 
-function cleanMemo(memo: Record<string, unknown>): Record<string, unknown> {
+function cleanMemo(memo: Record<string, unknown>, baseUrl?: string): Record<string, unknown> {
   const { nodes, snippet, creator, attachments, ...rest } = memo;
 
   // Transform attachments with only useful fields
   if (Array.isArray(attachments) && attachments.length > 0) {
-    rest.attachments = attachments.map((r: Record<string, unknown>) => ({
-      filename: r.filename,
-      type: r.type || r.mime,
-      size: Number(r.size) || 0,
-      createTime: r.createTime,
-      externalLink: r.externalLink || undefined,
-      uiResourcePath: r.uiResourcePath || undefined,
-    }));
+    rest.attachments = attachments.map((r: Record<string, unknown>) => {
+      const uid = (r.name as string)?.match(/^attachments\/(.+)$/)?.[1] || "";
+      const filename = r.filename as string;
+      const result: Record<string, unknown> = {
+        filename,
+        type: r.type || r.mime,
+        size: Number(r.size) || 0,
+        createTime: r.createTime,
+      };
+      if (uid && filename && baseUrl) {
+        result.url = `${baseUrl}/file/attachments/${uid}/${filename}`;
+      }
+      return result;
+    });
   }
 
   return rest;
@@ -53,7 +59,7 @@ export const registerMemoTools = (
     },
     async ({ id }) => {
       const memo = await client.get<Memo>(`/api/v1/memos/${id}`);
-      const cleaned = cleanMemo(memo as unknown as Record<string, unknown>);
+      const cleaned = cleanMemo(memo as unknown as Record<string, unknown>, client.baseUrl);
       return { content: [{ type: "text" as const, text: JSON.stringify(cleaned, null, 2) }] };
     }
   );
@@ -124,7 +130,7 @@ export const registerMemoTools = (
 
       await client.patch(`/api/v1/memos/${memoId}`, body, params);
       const updatedMemo = await client.get<Memo>(`/api/v1/memos/${memoId}`);
-      const cleaned = cleanMemo(updatedMemo as unknown as Record<string, unknown>);
+      const cleaned = cleanMemo(updatedMemo as unknown as Record<string, unknown>, client.baseUrl);
       return { content: [{ type: "text" as const, text: JSON.stringify(cleaned, null, 2) }] };
     }
   );
