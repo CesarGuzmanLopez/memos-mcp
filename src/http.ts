@@ -21,6 +21,42 @@ function extractBearerToken(req: Request): string | null {
   return authHeader.slice(7);
 }
 
+// Rate limiting configuration
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 100; // 100 requests per minute per IP
+const rateLimitMap = new Map<string, { count: number; timestamp: number }>();
+
+// Sweep de rate limit cada 30 segundos
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitMap) {
+    if (now - entry.timestamp > RATE_LIMIT_WINDOW_MS) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, 30_000);
+
+// Rate limiting middleware
+function rateLimit(req: Request, res: Response, next: NextFunction) {
+  const ip = req.ip || req.socket.remoteAddress || "unknown";
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+
+  if (!entry || now - entry.timestamp > RATE_LIMIT_WINDOW_MS) {
+    rateLimitMap.set(ip, { count: 1, timestamp: now });
+    next();
+    return;
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) {
+    res.status(429).json({ error: "Too many requests. Try again later." });
+    return;
+  }
+
+  entry.count++;
+  next();
+}
+
 // Configuración de SSE sessions
 const SSE_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 const SSE_MAX_SESSIONS = 100;
@@ -82,13 +118,24 @@ export function createHttpApp(config: Config) {
     next();
   });
 
+  // Rate limiting
+  app.use(rateLimit);
+
   // Health check endpoint
   app.get("/health", (_req: Request, res: Response) => {
+    const uptime = process.uptime();
+    const memUsage = process.memoryUsage();
     res.json({
       status: "ok",
       timestamp: new Date().toISOString(),
       version: "3.0.0",
       activeSessions: sseSessions.size,
+      uptime: Math.floor(uptime),
+      memory: {
+        rss: Math.floor(memUsage.rss / 1024 / 1024),
+        heapUsed: Math.floor(memUsage.heapUsed / 1024 / 1024),
+        heapTotal: Math.floor(memUsage.heapTotal / 1024 / 1024),
+      },
     });
   });
 

@@ -25,6 +25,16 @@ export class MemosClient {
     this.token = token;
   }
 
+  // Validate token is working
+  async validateToken(): Promise<boolean> {
+    try {
+      await this.getCurrentUser();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // Obtener usuario actual con cache global
   async getCurrentUser(): Promise<string> {
     if (this._currentUser) return this._currentUser;

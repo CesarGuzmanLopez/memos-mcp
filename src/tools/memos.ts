@@ -76,7 +76,7 @@ export const registerMemoTools = (
       const memoId = match?.[1];
       if (!memoId) throw new Error(`Create failed: unexpected name format: ${name}`);
 
-      return { content: [{ type: "text" as const, text: JSON.stringify({ id: memoId, visibility: memo.visibility, url: `${client.baseUrl}/m/${memoId}` }) }] };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ name: memo.name, visibility: memo.visibility, url: `${client.baseUrl}/m/${memoId}` }) }] };
     }
   );
 
@@ -115,7 +115,9 @@ export const registerMemoTools = (
       if (preserveUpdateTime) params.preserveUpdateTime = "true";
 
       await client.patch(`/api/v1/memos/${memoId}`, body, params);
-      return { content: [{ type: "text" as const, text: `Memo updated: ${client.baseUrl}/m/${memoId}` }] };
+      const updatedMemo = await client.get<Memo>(`/api/v1/memos/${memoId}`);
+      const cleaned = cleanMemo(updatedMemo as unknown as Record<string, unknown>);
+      return { content: [{ type: "text" as const, text: JSON.stringify(cleaned, null, 2) }] };
     }
   );
 
@@ -130,9 +132,10 @@ export const registerMemoTools = (
       annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ id }) => {
+      const memo = await client.get<Memo>(`/api/v1/memos/${id}`);
       const memoId = await resolveToMemoId(client, id);
       await client.delete(`/api/v1/memos/${memoId}`);
-      return { content: [{ type: "text" as const, text: `Memo ${id} deleted.` }] };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ deleted: true, name: memo.name, snippet: memo.snippet?.substring(0, 100) }) }] };
     }
   );
 };

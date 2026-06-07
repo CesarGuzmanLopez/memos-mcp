@@ -37,19 +37,20 @@ export const registerPrompts = (server: McpServer) => {
       },
     },
     ({ period }) => {
-      const map: Record<string, { date: string; week?: boolean }> = {
+      const map: Record<string, { date: string; week?: boolean; endDate?: string }> = {
         today: { date: "today" },
         week: { date: "this_week", week: true },
         month: { date: "this_month" },
-        year: { date: "this_year", week: true },
+        year: { date: "2024-01-01", endDate: "2024-12-31" },
       };
-      const { date, week } = map[period];
+      const { date, week, endDate } = map[period];
       const weekArg = week ? ", week=true" : "";
+      const endDateArg = endDate ? `, endDate="${endDate}"` : "";
 
       return {
         messages: [{
           role: "user",
-          content: { type: "text", text: `Review your memos from ${period}.\n\n1. search(date="${date}"${weekArg})\n2. get(id="<id>") for each memo, one at a time\n3. Wait for user confirmation between each\n4. Summarize when done` },
+          content: { type: "text", text: `Review your memos from ${period}.\n\n1. search(date="${date}"${weekArg}${endDateArg})\n2. get(id="<id>") for each memo, one at a time\n3. Wait for user confirmation between each\n4. Summarize when done` },
         }],
       };
     }
