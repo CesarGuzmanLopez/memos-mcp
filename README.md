@@ -58,6 +58,43 @@ For Claude Desktop/Code:
 }
 ```
 
+### Local Mode (Running from source)
+
+If you've cloned the repository and want to run it locally:
+
+```bash
+# 1. Clone and install
+git clone https://github.com/CesarGuzmanLopez/memos-mcp.git
+cd memos-mcp
+pnpm install
+
+# 2. Build
+pnpm build
+
+# 3. Run in stdio mode
+MEMOS_URL=https://your-memos-instance.com MEMOS_TOKEN=your-token node dist/index.js
+
+# 4. Or run in HTTP mode
+MEMOS_URL=https://your-memos-instance.com node dist/index.js --http
+```
+
+Then add to your MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "memos": {
+      "command": "node",
+      "args": ["/path/to/memos-mcp/dist/index.js"],
+      "env": {
+        "MEMOS_URL": "https://your-memos-instance.com",
+        "MEMOS_TOKEN": "your-access-token"
+      }
+    }
+  }
+}
+```
+
 ## Remote MCP Server Setup
 
 To expose memos-mcp as a remote server:
