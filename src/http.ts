@@ -139,6 +139,12 @@ export function createHttpApp(config: Config) {
     });
   });
 
+  // HEAD request for MCP discovery (no auth required for protocol discovery)
+  app.head("/mcp", (_req: Request, res: Response) => {
+    res.setHeader("Content-Type", "application/json");
+    res.status(200).end();
+  });
+
   // Streamable HTTP endpoint (moderno) - POST
   app.post("/mcp", async (req: Request, res: Response) => {
     const requestId = (req as Request & { requestId: string }).requestId;
