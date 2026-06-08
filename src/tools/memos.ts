@@ -68,9 +68,9 @@ export const registerMemoTools = (
   server.registerTool(
     "create",
     {
-      description: "Create a memo with markdown content. Use #hashtags for tags. For long content (>10K chars), split into multiple memos with a shared tag (e.g. #project/my-post) and add part numbers in the content. Each memo has a 50,000 char limit but creating many small memos is faster and more reliable.",
+      description: "Create a memo with markdown content. Use #hashtags for tags. IMPORTANT: Memos API enforces a strict 18,192 character limit per memo. For longer content, split into multiple memos with a shared tag (e.g. #project/my-post) and add part numbers in the content.",
       inputSchema: {
-        content: z.string().min(1).max(50000).describe("Markdown content with #tags. Max 50,000 chars. For longer content, split into multiple memos sharing a #parent-tag."),
+        content: z.string().min(1).max(18000).describe("Markdown content with #tags. HARD LIMIT: 18,192 chars (server-side). Stay under 18,000 to be safe. For longer content, split into multiple memos sharing a #parent-tag."),
         visibility: visibilityEnum.optional().describe("Visibility (default: configured default)"),
         createTime: z.string().optional().describe("Backdate. ISO 8601."),
       },
@@ -101,7 +101,7 @@ export const registerMemoTools = (
       description: "Update memo fields. Only provided fields are changed.",
       inputSchema: {
         id: z.string().min(1).describe("Memo ID or UID"),
-        content: z.string().max(50000).optional().describe("New markdown content. Max 50,000 characters."),
+        content: z.string().max(18000).optional().describe("New markdown content. HARD LIMIT: 18,192 chars (server-side). Stay under 18,000."),
         visibility: visibilityEnum.optional().describe("New visibility"),
         pinned: z.boolean().optional().describe("Pin/unpin"),
         state: z.enum(["NORMAL", "ARCHIVED"]).optional().describe("Archive/restore"),
