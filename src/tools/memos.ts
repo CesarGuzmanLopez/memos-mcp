@@ -90,7 +90,7 @@ export const registerMemoTools = (
       const memoId = match?.[1];
       if (!memoId) throw new Error(`Create failed: unexpected name format: ${name}`);
 
-      return { content: [{ type: "text" as const, text: JSON.stringify({ name: memo.name, visibility: memo.visibility, url: `${client.baseUrl}/m/${memoId}` }) }] };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ name: memo.name, visibility: memo.visibility, url: `${client.baseUrl}/memos/${memoId}` }) }] };
     }
   );
 
