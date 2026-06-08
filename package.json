@@ -1,10 +1,10 @@
 {
-  "name": "memos-mcp",
-  "version": "3.0.0",
+  "name": "mcp-for-memos",
+  "version": "1.0.0",
   "description": "MCP server that turns Memos into a multi-purpose database for AI — notes, projects, tasks, agendas, knowledge base. Supports HTTP/SSE multi-tenant access.",
   "type": "module",
   "bin": {
-    "memos-mcp": "./dist/index.js"
+    "mcp-for-memos": "./dist/index.js"
   },
   "files": [
     "dist"
