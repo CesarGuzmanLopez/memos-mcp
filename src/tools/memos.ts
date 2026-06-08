@@ -68,9 +68,9 @@ export const registerMemoTools = (
   server.registerTool(
     "create",
     {
-      description: "Create a memo with markdown content. Use #hashtags for tags.",
+      description: "Create a memo with markdown content. Use #hashtags for tags. For long content (>10K chars), split into multiple memos with a shared tag (e.g. #project/my-post) and add part numbers in the content. Each memo has a 50,000 char limit but creating many small memos is faster and more reliable.",
       inputSchema: {
-        content: z.string().min(1).max(50000).describe("Markdown content. Use #tag for tags. Max 50,000 characters."),
+        content: z.string().min(1).max(50000).describe("Markdown content with #tags. Max 50,000 chars. For longer content, split into multiple memos sharing a #parent-tag."),
         visibility: visibilityEnum.optional().describe("Visibility (default: configured default)"),
         createTime: z.string().optional().describe("Backdate. ISO 8601."),
       },
