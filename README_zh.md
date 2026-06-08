@@ -1,6 +1,6 @@
-# memos-mcp
+# mcp-for-memos
 
-[Memos](https://github.com/chriscurrycc/memos) 的 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 服务器 — 一个自托管的笔记服务。
+[Memos](https://github.com/usememos/memos) 的 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 服务器 — 一个自托管的笔记服务。
 
 [English](README.md)
 
@@ -25,7 +25,7 @@
 ### Claude Code
 
 ```bash
-claude mcp add --scope user memos -e MEMOS_URL=https://your-memos-instance.com -e MEMOS_TOKEN=your-access-token -- npx -y @chriscurrycc/memos-mcp
+claude mcp add --scope user memos -e MEMOS_URL=https://your-memos-instance.com -e MEMOS_TOKEN=your-access-token -- npx -y mcp-for-memos
 ```
 
 ### Claude Desktop
@@ -37,7 +37,7 @@ claude mcp add --scope user memos -e MEMOS_URL=https://your-memos-instance.com -
   "mcpServers": {
     "memos": {
       "command": "npx",
-      "args": ["-y", "@chriscurrycc/memos-mcp"],
+      "args": ["-y", "mcp-for-memos"],
       "env": {
         "MEMOS_URL": "https://your-memos-instance.com",
         "MEMOS_TOKEN": "your-access-token"
@@ -62,7 +62,7 @@ op item create --category=apiCredential --title="memos-api" token=your-access-to
 **Claude Code：**
 
 ```bash
-claude mcp add --scope user memos -e MEMOS_URL=https://your-memos-instance.com -e MEMOS_TOKEN=op://Personal/memos-api/token -- op run --no-masking -- npx -y @chriscurrycc/memos-mcp
+claude mcp add --scope user memos -e MEMOS_URL=https://your-memos-instance.com -e MEMOS_TOKEN=op://Personal/memos-api/token -- op run --no-masking -- npx -y mcp-for-memos
 ```
 
 **Claude Desktop：**
@@ -72,7 +72,7 @@ claude mcp add --scope user memos -e MEMOS_URL=https://your-memos-instance.com -
   "mcpServers": {
     "memos": {
       "command": "op",
-      "args": ["run", "--no-masking", "--", "npx", "-y", "@chriscurrycc/memos-mcp"],
+      "args": ["run", "--no-masking", "--", "npx", "-y", "mcp-for-memos"],
       "env": {
         "MEMOS_URL": "https://your-memos-instance.com",
         "MEMOS_TOKEN": "op://Personal/memos-api/token"
@@ -146,7 +146,7 @@ claude mcp add --scope user memos -e MEMOS_URL=https://your-memos-instance.com -
 ## 开发
 
 ```bash
-git clone https://github.com/chriscurrycc/memos-mcp.git
+git clone https://github.com/CesarGuzmanLopez/memos-mcp.git
 cd memos-mcp
 pnpm install
 pnpm build

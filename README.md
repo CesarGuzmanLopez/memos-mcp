@@ -1,4 +1,4 @@
-# memos-mcp
+# mcp-for-memos
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that turns [Memos](https://github.com/usememos/memos) into a **multi-purpose database** for your AI assistants — notes, projects, tasks, agendas, knowledge base, and more.
 
@@ -6,7 +6,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that t
 
 ## What is this?
 
-**memos-mcp** is a bridge between AI assistants and your Memos instance. Instead of context windows that forget, your AI has a **persistent memory database** it can query, create, and organize notes in.
+**mcp-for-memos** is a bridge between AI assistants and your Memos instance. Instead of context windows that forget, your AI has a **persistent memory database** it can query, create, and organize notes in.
 
 Think of it as:
 - 📝 **Personal knowledge base** — capture ideas, research, learnings
@@ -140,7 +140,7 @@ Add to your MCP config (`claude_desktop_config.json` or equivalent):
   "mcpServers": {
     "memos": {
       "command": "npx",
-      "args": ["-y", "memos-mcp"],
+      "args": ["-y", "mcp-for-memos"],
       "env": {
         "MEMOS_URL": "https://your-memos-instance.com",
         "MEMOS_TOKEN": "your-access-token"
@@ -191,10 +191,10 @@ For servers that support remote MCP (OpenCode, LibreChat, etc.):
 
 ```bash
 # Start with npx
-MEMOS_URL=https://your-memos-instance.com npx -y memos-mcp --http
+MEMOS_URL=https://your-memos-instance.com npx -y mcp-for-memos --http
 
 # Or with custom port
-MEMOS_URL=https://your-memos-instance.com npx -y memos-mcp --http --port 8443
+MEMOS_URL=https://your-memos-instance.com npx -y mcp-for-memos --http --port 8443
 ```
 
 Each client sends its own Bearer token — no token in the server config.
@@ -204,7 +204,7 @@ Each client sends its own Bearer token — no token in the server config.
 For Claude Desktop/Code:
 
 ```bash
-MEMOS_URL=https://your-memos-instance.com MEMOS_TOKEN=your-token npx -y memos-mcp
+MEMOS_URL=https://your-memos-instance.com MEMOS_TOKEN=your-token npx -y mcp-for-memos
 ```
 
 ### Running from Source
@@ -232,7 +232,7 @@ Then add to your MCP client config:
   "mcpServers": {
     "memos": {
       "command": "node",
-      "args": ["/path/to/memos-mcp/dist/index.js"],
+      "args": ["/path/to/mcp-for-memos/dist/index.js"],
       "env": {
         "MEMOS_URL": "https://your-memos-instance.com",
         "MEMOS_TOKEN": "your-access-token"
@@ -245,10 +245,10 @@ Then add to your MCP client config:
 ### Docker
 
 ```bash
-docker run -d --name memos-mcp \
+docker run -d --name mcp-for-memos \
   -p 8444:8443 \
   -e MEMOS_URL=https://your-memos-instance.com \
-  ghcr.io/cesarguzmanlopez/memos-mcp:latest \
+  ghcr.io/cesarguzmanlopez/mcp-for-memos:latest \
   node dist/index.js --http --port 8443
 ```
 
@@ -269,7 +269,7 @@ CMD ["node", "dist/index.js", "--http", "--port", "8443"]
 ```nginx
 server {
     listen 443 ssl;
-    server_name memos-mcp.your-domain.com;
+    server_name mcp-for-memos.your-domain.com;
 
     location / {
         proxy_pass http://127.0.0.1:8444;

@@ -18,7 +18,7 @@ export const createServerWithClient = (
   const defaultVisibility = options.defaultVisibility ?? "PRIVATE";
 
   const server = new McpServer({
-    name: "memos-mcp",
+    name: "mcp-for-memos",
     version: "3.0.0",
   });
 

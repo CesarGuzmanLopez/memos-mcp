@@ -24,11 +24,11 @@ if (portIndex !== -1 && args[portIndex + 1]) {
 // Mostrar ayuda
 if (showHelp) {
   console.log(`
-memos-mcp - Model Context Protocol server for Memos
+mcp-for-memos - Model Context Protocol server for Memos
 
 Usage:
-  memos-mcp              Start in stdio mode (for Claude Desktop/Code)
-  memos-mcp --http       Start in HTTP/SSE mode (for OpenCode/LibreChat)
+  mcp-for-memos              Start in stdio mode (for Claude Desktop/Code)
+  mcp-for-memos --http       Start in HTTP/SSE mode (for OpenCode/LibreChat)
 
 Environment variables:
   MEMOS_URL              Memos instance URL (required)
@@ -48,10 +48,10 @@ Stdio mode:
 
 Examples:
   # Claude Desktop/Code (stdio) - token in env
-  MEMOS_URL=https://memos.example.com MEMOS_TOKEN=xxx npx memos-mcp
+  MEMOS_URL=https://memos.example.com MEMOS_TOKEN=xxx npx mcp-for-memos
 
   # OpenCode/LibreChat (HTTP) - token in client config
-  MEMOS_URL=https://memos.example.com npx memos-mcp --http
+  MEMOS_URL=https://memos.example.com npx mcp-for-memos --http
 `);
   process.exit(0);
 }
@@ -63,7 +63,7 @@ if (isHttpMode) {
     process.env.HTTP_PORT = String(customPort);
   }
   const config = loadConfig();
-  console.log(`Starting memos-mcp in HTTP mode...`);
+  console.log(`Starting mcp-for-memos in HTTP mode...`);
   console.log(`Server will accept requests at:`);
   console.log(`  - http://${config.HTTP_HOST}:${config.HTTP_PORT}/mcp (Streamable HTTP)`);
   console.log(`  - http://${config.HTTP_HOST}:${config.HTTP_PORT}/sse (SSE)`);

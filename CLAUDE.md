@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-memos-mcp is an MCP (Model Context Protocol) server for [Memos](https://github.com/usememos/memos), providing tools, prompts, and resources for memo management via Claude Code, Claude Desktop, OpenCode, LibreChat, and other MCP-compatible clients.
+mcp-for-memos is an MCP (Model Context Protocol) server for [Memos](https://github.com/usememos/memos), providing tools, prompts, and resources for memo management via Claude Code, Claude Desktop, OpenCode, LibreChat, and other MCP-compatible clients.
 
 ## Development Commands
 
