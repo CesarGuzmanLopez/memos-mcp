@@ -70,7 +70,7 @@ export const registerMemoTools = (
     {
       description: "Create a memo with markdown content. Use #hashtags for tags.",
       inputSchema: {
-        content: z.string().min(1).describe("Markdown content. Use #tag for tags."),
+        content: z.string().min(1).max(50000).describe("Markdown content. Use #tag for tags. Max 50,000 characters."),
         visibility: visibilityEnum.optional().describe("Visibility (default: configured default)"),
         createTime: z.string().optional().describe("Backdate. ISO 8601."),
       },
@@ -101,7 +101,7 @@ export const registerMemoTools = (
       description: "Update memo fields. Only provided fields are changed.",
       inputSchema: {
         id: z.string().min(1).describe("Memo ID or UID"),
-        content: z.string().optional().describe("New markdown content"),
+        content: z.string().max(50000).optional().describe("New markdown content. Max 50,000 characters."),
         visibility: visibilityEnum.optional().describe("New visibility"),
         pinned: z.boolean().optional().describe("Pin/unpin"),
         state: z.enum(["NORMAL", "ARCHIVED"]).optional().describe("Archive/restore"),

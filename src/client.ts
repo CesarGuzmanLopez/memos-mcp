@@ -12,8 +12,8 @@ setInterval(() => {
   }
 }, 60_000); // Cada minuto
 
-// Timeout para requests a Memos API
-const FETCH_TIMEOUT_MS = 30_000; // 30 segundos
+// Timeout para requests a Memos API (configurable via MEMOS_FETCH_TIMEOUT, default 120s)
+const FETCH_TIMEOUT_MS = parseInt(process.env.MEMOS_FETCH_TIMEOUT || "120000", 10);
 
 export class MemosClient {
   readonly baseUrl: string;
