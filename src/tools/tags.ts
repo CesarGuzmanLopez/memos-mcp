@@ -149,6 +149,62 @@ async function fetchTagsForUser(client: MemosClient): Promise<Map<string, number
   return tagCounts;
 }
 
+// Escape para usar en regex
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Renombrar un tag en todos los memos del usuario
+async function renameTagForUser(client: MemosClient, oldName: string, newName: string): Promise<{ updated: number; total: number }> {
+  const currentUser = await client.getCurrentUser();
+  let pageToken: string | undefined;
+  let pageCount = 0;
+  let updated = 0;
+  let total = 0;
+  const maxPages = 20;
+
+  // Regex para reemplazar #oldTag o #oldTag/sub -> #newTag o #newTag/sub
+  const tagRegex = new RegExp(`#${escapeRegex(oldName)}(?=(/|\\s|$))`, "g");
+
+  do {
+    const params: Record<string, string> = {
+      pageSize: "500",
+      filter: `creator == "${currentUser}"`,
+    };
+    if (pageToken) params.pageToken = pageToken;
+
+    const result = await client.get<{ memos: Memo[]; nextPageToken?: string }>(
+      "/api/v1/memos",
+      params
+    );
+
+    if (result.memos) {
+      for (const memo of result.memos) {
+        const tags = memo.tags ?? [];
+        const hasTag = tags.some((t) => t === oldName || t.startsWith(oldName + "/"));
+
+        if (hasTag && memo.content) {
+          total++;
+          const newContent = memo.content.replace(tagRegex, `#${newName}$1`);
+          if (newContent !== memo.content) {
+            await client.patch(`/api/v1/memos/${memo.uid}`, { content: newContent }, { updateMask: "content" });
+            updated++;
+          }
+        }
+      }
+    }
+
+    pageToken = result.nextPageToken;
+    pageCount++;
+    if (pageCount >= maxPages) break;
+  } while (pageToken);
+
+  // Invalidar cache de tags
+  tagsCache.delete(`tags:${currentUser}`);
+
+  return { updated, total };
+}
+
 export const registerTagTools = (server: McpServer, client: MemosClient) => {
   server.registerTool(
     "tags",
@@ -162,14 +218,38 @@ export const registerTagTools = (server: McpServer, client: MemosClient) => {
         "- No args: top-level tags only (e.g. 'project', 'work')",
         "- parent='work': children of 'work' (e.g. 'work/meeting', 'work/notes')",
         "- recursive=true: all tags flat (useful for tag recommendations)",
+        "- renameTo='newName': rename a tag across all memos (requires 'parent' as old tag name)",
       ].join("\n"),
       inputSchema: {
-        parent: z.string().optional().describe("Parent tag to filter children. E.g. 'project' to see 'project/backend', 'project/frontend'"),
+        parent: z.string().optional().describe("Parent tag to filter children. E.g. 'project' to see 'project/backend', 'project/frontend'. Also used as old tag name when renaming."),
         recursive: z.boolean().optional().describe("Return ALL tags including nested ones"),
+        renameTo: z.string().optional().describe("New name to rename the tag specified in 'parent' to. Renames across all memos."),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ parent, recursive }) => {
+    async ({ parent, recursive, renameTo }) => {
+      // Modo rename: parent = old name, renameTo = new name
+      if (parent && renameTo) {
+        if (parent === renameTo) {
+          return { content: [{ type: "text" as const, text: "Old and new tag names are the same. Nothing to do." }] };
+        }
+
+        const result = await renameTagForUser(client, parent, renameTo);
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              renamed: true,
+              oldTag: parent,
+              newTag: renameTo,
+              updatedMemos: result.updated,
+              totalMemosWithTag: result.total,
+            }, null, 2),
+          }],
+        };
+      }
+
+      // Modo lectura (original)
       const tagCounts = await fetchTagsForUser(client);
 
       if (tagCounts.size === 0) {

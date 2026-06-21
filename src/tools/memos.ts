@@ -13,11 +13,12 @@ function parseToRFC3339(isoString: string, paramName: string): string {
 }
 
 function cleanMemo(memo: Record<string, unknown>, baseUrl?: string): Record<string, unknown> {
-  const { nodes, snippet, creator, attachments, ...rest } = memo;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { nodes, snippet, creator, ...rest } = memo;
 
   // Transform attachments with only useful fields
-  if (Array.isArray(attachments) && attachments.length > 0) {
-    rest.attachments = attachments.map((r: Record<string, unknown>) => {
+  if (Array.isArray(memo.attachments) && (memo.attachments as Array<unknown>).length > 0) {
+    rest.attachments = (memo.attachments as Array<Record<string, unknown>>).map((r) => {
       const uid = (r.name as string)?.match(/^attachments\/(.+)$/)?.[1] || "";
       const filename = r.filename as string;
       const result: Record<string, unknown> = {
@@ -146,8 +147,9 @@ export const registerMemoTools = (
       annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ id }) => {
-      const memo = await client.get<Memo>(`/api/v1/memos/${id}`);
+      // Resolver ID primero para evitar fetch adicional
       const memoId = await resolveToMemoId(client, id);
+      const memo = await client.get<Memo>(`/api/v1/memos/${memoId}`);
       await client.delete(`/api/v1/memos/${memoId}`);
       return { content: [{ type: "text" as const, text: JSON.stringify({ deleted: true, name: memo.name, snippet: memo.snippet?.substring(0, 100) }) }] };
     }

@@ -11,7 +11,6 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that t
 Think of it as:
 - 📝 **Personal knowledge base** — capture ideas, research, learnings
 - 📋 **Task manager** — to-dos, checklists, project tracking
-- 📅 **Agenda/planner** — schedules, meeting notes, deadlines
 - 🏗️ **Project database** — specs, decisions, retrospectives
 - 🔖 **Bookmark system** — save links, quotes, references
 
@@ -33,7 +32,7 @@ Once connected, your AI assistant gains **persistent memory**. Here's what it ca
 - "What did I do yesterday?" → searches by date
 - "Show me #project notes" → filters by tag
 - "Find notes about API design" → full-text search
-- "What's on my agenda today?" → today's memos
+- "What happened today?" → today's memos
 - "Notes from last week" → date range search
 - "Show pinned notes" → filter by pin status
 - "Find notes with incomplete tasks" → task filter
@@ -70,7 +69,7 @@ Once connected, your AI assistant gains **persistent memory**. Here's what it ca
 | You say | The AI calls |
 |---------|-------------|
 | "What did I do yesterday?" | `search(date="yesterday")` |
-| "What's on my agenda today?" | `search(date="today")` |
+| "What happened today?" | `search(date="today")` |
 | "Notes from last week" | `search(date="last_week", week=true)` |
 | "Show me #project notes" | `search(tags=["project"])` |
 | "Find notes about API design" | `search(query="API design")` |

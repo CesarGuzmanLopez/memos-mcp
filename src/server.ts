@@ -3,6 +3,7 @@ import { MemosClient } from "./client.js";
 import { registerMemoTools } from "./tools/memos.js";
 import { registerTagTools } from "./tools/tags.js";
 import { registerSearchTool } from "./tools/review.js";
+import { registerMemoLinksTool } from "./tools/memo_links.js";
 import { registerPrompts } from "./prompts/index.js";
 import { VALID_VISIBILITIES, type Visibility } from "./types.js";
 
@@ -19,12 +20,13 @@ export const createServerWithClient = (
 
   const server = new McpServer({
     name: "mcp-for-memos",
-    version: "3.0.0",
+    version: "1.0.1",
   });
 
   registerMemoTools(server, client, { defaultVisibility });
   registerTagTools(server, client);
   registerSearchTool(server, client);
+  registerMemoLinksTool(server, client);
   registerPrompts(server);
 
   return server;

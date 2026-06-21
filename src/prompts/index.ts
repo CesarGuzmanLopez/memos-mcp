@@ -60,7 +60,7 @@ export const registerPrompts = (server: McpServer) => {
   server.registerPrompt(
     "on_day",
     {
-      description: "Check what happened or is planned for a specific date",
+      description: "Check what happened on a specific date",
       argsSchema: {
         date: z.string().describe("Date to check (ISO 8601, 'today', 'yesterday', 'next_monday', etc.)"),
       },
@@ -68,7 +68,7 @@ export const registerPrompts = (server: McpServer) => {
     ({ date }) => ({
       messages: [{
         role: "user",
-        content: { type: "text", text: `Check what happened or is planned for ${date}.\n\nUse: search(date="${date}")\nPresent the memos found.` },
+        content: { type: "text", text: `Check what happened on ${date}.\n\nUse: search(date="${date}")\nPresent the memos found.` },
       }],
     })
   );

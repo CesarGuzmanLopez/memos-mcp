@@ -15,14 +15,38 @@ setInterval(() => {
 // Timeout para requests a Memos API (configurable via MEMOS_FETCH_TIMEOUT, default 120s)
 const FETCH_TIMEOUT_MS = parseInt(process.env.MEMOS_FETCH_TIMEOUT || "120000", 10);
 
+// Retry configuration
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 500;
+
+function isRetryable(status: number): boolean {
+  return status >= 500 || status === 429 || status === 0;
+}
+
+async function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export type LogFn = (level: "debug" | "info" | "warn" | "error", message: string, meta?: Record<string, unknown>) => void;
+
 export class MemosClient {
   readonly baseUrl: string;
   private token: string;
   private _currentUser: string | null = null;
+  private log: LogFn;
 
-  constructor(baseUrl: string, token: string) {
+  constructor(baseUrl: string, token: string, logFn?: LogFn) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.token = token;
+    this.log = logFn || (() => {});
+  }
+
+  // Actualizar token (útil en multi-tenant cuando se reusa el cliente)
+  updateToken(newToken: string): void {
+    if (newToken !== this.token) {
+      this.token = newToken;
+      this._currentUser = null; // Forzar recarga del usuario
+    }
   }
 
   // Validate token is working
@@ -45,6 +69,8 @@ export class MemosClient {
       this._currentUser = cached.user;
       return this._currentUser;
     }
+
+    this.log("debug", "Fetching current user from Memos API");
 
     const result = await this.get<{ memos: Array<{ creator: string }> }>(
       "/api/v1/memos",
@@ -69,28 +95,39 @@ export class MemosClient {
     };
   }
 
-  // Helper para fetch con timeout
-  private async fetchWithTimeout(
-    url: string,
-    options: RequestInit
-  ): Promise<Response> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  // Helper para fetch con timeout y retry
+  private async fetchWithRetry(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-      return response;
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        throw new Error(`Request to ${url} timed out after ${FETCH_TIMEOUT_MS}ms`);
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+        });
+
+        // Si la respuesta es exitosa o no es reintentable, retornar
+        if (response.ok || !isRetryable(response.status) || attempt >= retries) {
+          return response;
+        }
+
+        this.log("warn", `Retryable response ${response.status}, attempt ${attempt + 1}/${retries}`, { url });
+        await delay(RETRY_DELAY_MS * (attempt + 1));
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          throw new Error(`Request to ${url} timed out after ${FETCH_TIMEOUT_MS}ms`);
+        }
+        if (attempt >= retries) throw error;
+
+        this.log("warn", `Network error, attempt ${attempt + 1}/${retries}`, { url });
+        await delay(RETRY_DELAY_MS * (attempt + 1));
+      } finally {
+        clearTimeout(timeout);
       }
-      throw error;
-    } finally {
-      clearTimeout(timeout);
     }
+    // Fallback (no debería llegar aquí)
+    throw new Error(`Request to ${url} failed after ${retries + 1} attempts`);
   }
 
   async get<T>(path: string, params?: Record<string, string>): Promise<T> {
@@ -102,7 +139,8 @@ export class MemosClient {
         }
       }
     }
-    const res = await this.fetchWithTimeout(url.toString(), {
+    this.log("debug", `GET ${path}`, { params });
+    const res = await this.fetchWithRetry(url.toString(), {
       headers: this.headers(),
     });
     if (!res.ok) {
@@ -115,7 +153,8 @@ export class MemosClient {
   }
 
   async post<T>(path: string, body?: unknown): Promise<T> {
-    const res = await this.fetchWithTimeout(`${this.baseUrl}${path}`, {
+    this.log("debug", `POST ${path}`);
+    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: this.headers(),
       body: body ? JSON.stringify(body) : undefined,
@@ -138,7 +177,8 @@ export class MemosClient {
         }
       }
     }
-    const res = await this.fetchWithTimeout(url.toString(), {
+    this.log("debug", `PATCH ${path}`, { params });
+    const res = await this.fetchWithRetry(url.toString(), {
       method: "PATCH",
       headers: this.headers(),
       body: body ? JSON.stringify(body) : undefined,
@@ -153,7 +193,8 @@ export class MemosClient {
   }
 
   async delete<T = unknown>(path: string): Promise<T> {
-    const res = await this.fetchWithTimeout(`${this.baseUrl}${path}`, {
+    this.log("debug", `DELETE ${path}`);
+    const res = await this.fetchWithRetry(`${this.baseUrl}${path}`, {
       method: "DELETE",
       headers: this.headers(),
     });

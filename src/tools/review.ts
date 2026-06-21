@@ -8,6 +8,14 @@ function escapeCel(str: string): string {
   return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+const RELATIVE_DATE_PATTERNS = [
+  "today", "yesterday", "tomorrow",
+  "this_week", "next_week", "last_week",
+  "this_month", "next_month", "last_month",
+  "next_monday..next_sunday", "last_monday..last_sunday",
+  "N_days_ago", "in_N_days", "N_weeks_ago", "in_N_weeks",
+] as const;
+
 function parseRelativeDate(input: string): Date {
   const now = new Date();
   const lower = input.toLowerCase().trim();
@@ -49,8 +57,16 @@ function parseRelativeDate(input: string): Date {
   if (inWeeksMatch) { const d = new Date(now); d.setUTCDate(d.getUTCDate() + parseInt(inWeeksMatch[1]) * 7); return toMidnight(d); }
 
   const parsed = new Date(input);
-  if (!isNaN(parsed.getTime())) return parsed;
-  throw new Error(`Cannot parse date: "${input}". Use ISO 8601, "today", "yesterday", "next_monday", "3_days_ago", etc.`);
+  if (!isNaN(parsed.getTime())) return toMidnight(parsed);
+  throw new Error(
+    `Cannot parse date: "${input}".\n` +
+    `Use ISO 8601 (e.g. "2025-06-15"), or relative dates like:\n` +
+    `  "today", "yesterday", "tomorrow"\n` +
+    `  "next_monday", "last_friday"\n` +
+    `  "this_week", "next_week", "last_week"\n` +
+    `  "this_month", "next_month", "last_month"\n` +
+    `  "3_days_ago", "in_7_days", "2_weeks_ago", "in_2_weeks"`
+  );
 }
 
 function getWeekBoundaries(refDate: Date): { start: Date; end: Date } {

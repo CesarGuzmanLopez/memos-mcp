@@ -9,7 +9,8 @@ import { Config, getCorsOrigins } from "./config.js";
 function log(level: "info" | "warn" | "error" | "debug", message: string, meta?: Record<string, unknown>) {
   const timestamp = new Date().toISOString();
   const metaStr = meta ? ` ${JSON.stringify(meta)}` : "";
-  console.log(`[${timestamp}] [${level.toUpperCase()}] ${message}${metaStr}`);
+  // Usar stderr para debug/info/warn/error, stdout solo para respuestas
+  process.stderr.write(`[${timestamp}] [${level.toUpperCase()}] ${message}${metaStr}\n`);
 }
 
 // Extraer Bearer token del header Authorization
@@ -82,6 +83,58 @@ function sweepIdleSessions() {
 // Sweep cada 30 segundos
 setInterval(sweepIdleSessions, 30_000);
 
+// Helper para manejar requests MCP (Streamable HTTP), tanto GET como POST
+async function handleMcpRequest(req: Request, res: Response, method: "GET" | "POST") {
+  const requestId = (req as Request & { requestId: string }).requestId;
+
+  const token = extractBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: "Missing or invalid Authorization header. Use: Authorization: Bearer <token>" });
+    return;
+  }
+
+  const config = (req as any).config as Config | undefined;
+  if (!config?.MEMOS_URL) {
+    res.status(500).json({ error: "Server configuration error: MEMOS_URL not set" });
+    return;
+  }
+
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined, // Stateless
+  });
+
+  const client = new MemosClient(config.MEMOS_URL, token, (level, msg, meta) => log(level as any, msg, meta));
+  const server = createServerWithClient(client);
+  let cleanedUp = false;
+
+  const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    try { transport.close(); } catch {}
+    try { server.close(); } catch {}
+  };
+
+  const startTime = Date.now();
+
+  try {
+    await server.connect(transport as any);
+    await transport.handleRequest(req, res, req.body);
+
+    res.on("close", () => {
+      const duration = Date.now() - startTime;
+      log("info", `MCP ${method} completed`, { requestId, durationMs: duration });
+      cleanup();
+    });
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    log("error", `Error handling MCP ${method} request`, { requestId, durationMs: duration, error: String(error) });
+    cleanup();
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+}
+
 // Crear aplicación Express
 export function createHttpApp(config: Config) {
   const app = express();
@@ -92,13 +145,20 @@ export function createHttpApp(config: Config) {
   // Request ID middleware
   app.use((req: Request, _res: Response, next: NextFunction) => {
     (req as Request & { requestId: string }).requestId = Math.random().toString(36).slice(2, 11);
+    (req as any).config = config;
     next();
   });
 
-  // Logging middleware
+  // Logging middleware con timing
   app.use((req: Request, res: Response, next: NextFunction) => {
     const requestId = (req as Request & { requestId: string }).requestId;
-    log("info", `${req.method} ${req.path}`, { requestId, ip: req.ip });
+    const start = Date.now();
+
+    res.on("finish", () => {
+      const duration = Date.now() - start;
+      log("info", `${req.method} ${req.path} ${res.statusCode}`, { requestId, ip: req.ip, durationMs: duration });
+    });
+
     next();
   });
 
@@ -128,7 +188,7 @@ export function createHttpApp(config: Config) {
     res.json({
       status: "ok",
       timestamp: new Date().toISOString(),
-      version: "3.0.0",
+      version: "1.0.1",
       activeSessions: sseSessions.size,
       uptime: Math.floor(uptime),
       memory: {
@@ -145,95 +205,9 @@ export function createHttpApp(config: Config) {
     res.status(200).end();
   });
 
-  // Streamable HTTP endpoint (moderno) - POST
-  app.post("/mcp", async (req: Request, res: Response) => {
-    const requestId = (req as Request & { requestId: string }).requestId;
-
-    const token = extractBearerToken(req);
-    if (!token) {
-      log("warn", "Missing or invalid Authorization header", { requestId });
-      res.status(401).json({ error: "Missing or invalid Authorization header. Use: Authorization: Bearer <token>" });
-      return;
-    }
-
-    if (!config.MEMOS_URL) {
-      log("error", "MEMOS_URL not configured");
-      res.status(500).json({ error: "Server configuration error: MEMOS_URL not set" });
-      return;
-    }
-
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined, // Stateless
-    });
-
-    const client = new MemosClient(config.MEMOS_URL, token);
-    const server = createServerWithClient(client);
-    let cleanedUp = false;
-
-    const cleanup = () => {
-      if (cleanedUp) return;
-      cleanedUp = true;
-      try { transport.close(); } catch {}
-      try { server.close(); } catch {}
-    };
-
-    try {
-      await server.connect(transport as any);
-      await transport.handleRequest(req, res, req.body);
-
-      res.on("close", cleanup);
-    } catch (error) {
-      log("error", "Error handling MCP request", { requestId, error: String(error) });
-      cleanup();
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Internal server error" });
-      }
-    }
-  });
-
-  // Streamable HTTP endpoint - GET
-  app.get("/mcp", async (req: Request, res: Response) => {
-    const requestId = (req as Request & { requestId: string }).requestId;
-
-    const token = extractBearerToken(req);
-    if (!token) {
-      res.status(401).json({ error: "Missing or invalid Authorization header" });
-      return;
-    }
-
-    if (!config.MEMOS_URL) {
-      res.status(500).json({ error: "Server configuration error: MEMOS_URL not set" });
-      return;
-    }
-
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
-
-    const client = new MemosClient(config.MEMOS_URL, token);
-    const server = createServerWithClient(client);
-    let cleanedUp = false;
-
-    const cleanup = () => {
-      if (cleanedUp) return;
-      cleanedUp = true;
-      try { transport.close(); } catch {}
-      try { server.close(); } catch {}
-    };
-
-    try {
-      await server.connect(transport as any);
-      await transport.handleRequest(req, res);
-
-      res.on("close", cleanup);
-    } catch (error) {
-      log("error", "Error in MCP GET", { requestId, error: String(error) });
-      cleanup();
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Internal server error" });
-      }
-    }
-  });
+  // Streamable HTTP endpoint (moderno) - POST y GET
+  app.post("/mcp", (req: Request, res: Response) => handleMcpRequest(req, res, "POST"));
+  app.get("/mcp", (req: Request, res: Response) => handleMcpRequest(req, res, "GET"));
 
   // SSE endpoint - GET para iniciar stream
   app.get("/sse", async (req: Request, res: Response) => {
@@ -258,7 +232,7 @@ export function createHttpApp(config: Config) {
     }
 
     const transport = new SSEServerTransport("/sse/messages", res);
-    const client = new MemosClient(config.MEMOS_URL, token);
+    const client = new MemosClient(config.MEMOS_URL, token, (level, msg, meta) => log(level as any, msg, meta));
     const server = createServerWithClient(client);
 
     // Guardar sesión
@@ -312,6 +286,11 @@ export function createHttpApp(config: Config) {
         res.status(500).json({ error: "Internal server error" });
       }
     }
+  });
+
+  // 404 handler
+  app.use((_req: Request, res: Response) => {
+    res.status(404).json({ error: "Not found. Available endpoints: /health, /mcp, /sse" });
   });
 
   // Error handler
