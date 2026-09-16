@@ -148,11 +148,11 @@ claude mcp add --scope user memos -e MEMOS_URL=https://your-memos-instance.com -
 ```bash
 git clone https://github.com/CesarGuzmanLopez/memos-mcp.git
 cd memos-mcp
-pnpm install
-pnpm build
+npm install
+npm run build
 
 # 开发模式运行
-MEMOS_URL=http://localhost:5230 MEMOS_TOKEN=your-token pnpm dev
+MEMOS_URL=http://localhost:5230 MEMOS_TOKEN=your-token npm run dev
 ```
 
 ## 许可证

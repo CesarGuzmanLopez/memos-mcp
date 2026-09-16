@@ -7,7 +7,5 @@ src/
 README.md
 README_zh.md
 tsconfig.json
-pnpm-lock.yaml
-pnpm-workspace.yaml
-package-lock.json
+test/
 *.ts

@@ -10,16 +10,19 @@ mcp-for-memos is an MCP (Model Context Protocol) server for [Memos](https://gith
 
 ```bash
 # Install dependencies
-pnpm install
+npm install
 
 # Build (TypeScript → dist/)
-pnpm build
+npm run build
+
+# Smoke test (build + stdio/HTTP handshake)
+npm test
 
 # Run in dev mode (stdio)
-pnpm dev
+npm run dev
 
 # Run in HTTP mode
-pnpm dev:http
+npm run dev:http
 ```
 
 ## Architecture

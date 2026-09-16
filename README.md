@@ -2,6 +2,8 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that turns [Memos](https://github.com/usememos/memos) into a **multi-purpose database** for your AI assistants — notes, projects, tasks, agendas, knowledge base, and more.
 
+> **Note:** Recent Memos versions ship a **native MCP server** at `/mcp`. If your instance already exposes it, connect your client directly to `https://your-memos-instance/mcp` with `Authorization: Bearer <PAT>` — no bridge needed. This project remains useful for older Memos versions without `/mcp`, for HTTP multi-tenant setups (one shared server, per-user tokens) and when you need its extra tools (comments, relations, tag rename).
+
 [中文文档](README_zh.md)
 
 ## What is this?
@@ -212,10 +214,10 @@ MEMOS_URL=https://your-memos-instance.com MEMOS_TOKEN=your-token npx -y mcp-for-
 # 1. Clone and install
 git clone https://github.com/CesarGuzmanLopez/memos-mcp.git
 cd memos-mcp
-pnpm install
+npm install
 
 # 2. Build
-pnpm build
+npm run build
 
 # 3. Run in stdio mode
 MEMOS_URL=https://your-memos-instance.com MEMOS_TOKEN=your-token node dist/index.js

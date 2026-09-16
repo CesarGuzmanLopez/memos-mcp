@@ -1,6 +1,6 @@
 {
   "name": "mcp-for-memos",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "MCP server that turns Memos into a multi-purpose database for AI — notes, projects, tasks, agendas, knowledge base. Supports HTTP/SSE multi-tenant access.",
   "type": "module",
   "bin": {
@@ -15,6 +15,8 @@
     "dev:http": "tsx src/index.ts --http",
     "start": "node dist/index.js",
     "start:http": "node dist/index.js --http",
+    "pretest": "npm run build",
+    "test": "node test/smoke.mjs",
     "prepublishOnly": "tsc"
   },
   "keywords": [
