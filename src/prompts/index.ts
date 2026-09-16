@@ -8,9 +8,9 @@ export const registerPrompts = (server: McpServer) => {
     {
       description: "Quick-save a thought, note, task, or idea",
       argsSchema: {
-        content: z.string().describe("The thought or note to save"),
+        content: z.string().catch("").describe("The thought or note to save"),
         tags: z.string().optional().describe("Comma-separated tags (e.g. 'idea,project')"),
-        visibility: z.enum(["PRIVATE", "PROTECTED", "PUBLIC"]).default("PRIVATE"),
+        visibility: z.enum(["PRIVATE", "PROTECTED", "PUBLIC"]).catch("PRIVATE"),
       },
     },
     ({ content, tags, visibility }) => {
@@ -33,7 +33,7 @@ export const registerPrompts = (server: McpServer) => {
     {
       description: "Review memos from a time period",
       argsSchema: {
-        period: z.enum(["today", "week", "month", "year"]).default("week"),
+        period: z.enum(["today", "week", "month", "year"]).catch("week"),
       },
     },
     ({ period }) => {
@@ -62,7 +62,7 @@ export const registerPrompts = (server: McpServer) => {
     {
       description: "Check what happened on a specific date",
       argsSchema: {
-        date: z.string().describe("Date to check (ISO 8601, 'today', 'yesterday', 'next_monday', etc.)"),
+        date: z.string().catch("today").describe("Date to check (ISO 8601, 'today', 'yesterday', 'next_monday', etc.)"),
       },
     },
     ({ date }) => ({
