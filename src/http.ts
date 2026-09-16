@@ -1,7 +1,7 @@
 import express, { Request, Response, NextFunction } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { createServerWithClient } from "./server.js";
+import { createServerWithClient, PKG_VERSION } from "./server.js";
 import { MemosClient } from "./client.js";
 import { Config, getCorsOrigins } from "./config.js";
 
@@ -188,7 +188,7 @@ export function createHttpApp(config: Config) {
     res.json({
       status: "ok",
       timestamp: new Date().toISOString(),
-      version: "1.0.1",
+      version: PKG_VERSION,
       activeSessions: sseSessions.size,
       uptime: Math.floor(uptime),
       memory: {

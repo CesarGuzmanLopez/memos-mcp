@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { readFileSync } from "node:fs";
 import { MemosClient } from "./client.js";
 import { registerMemoTools } from "./tools/memos.js";
 import { registerTagTools } from "./tools/tags.js";
@@ -11,6 +12,11 @@ export interface ServerOptions {
   defaultVisibility?: Visibility;
 }
 
+// La versión se lee de package.json (raíz del paquete tanto en dist/ como en src/)
+export const PKG_VERSION = (
+  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
+).version;
+
 // Crear servidor con cliente inyectado (para HTTP multi-tenant)
 export const createServerWithClient = (
   client: MemosClient,
@@ -20,7 +26,7 @@ export const createServerWithClient = (
 
   const server = new McpServer({
     name: "mcp-for-memos",
-    version: "1.0.1",
+    version: PKG_VERSION,
   });
 
   registerMemoTools(server, client, { defaultVisibility });

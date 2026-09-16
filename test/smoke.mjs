@@ -10,9 +10,13 @@
  * No toca ningún Memos real: MEMOS_URL apunta a un puerto cerrado.
  */
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const NODE = process.execPath;
+const PKG_VERSION = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8")
+).version;
 const BASE_ENV = { ...process.env, MEMOS_URL: "http://127.0.0.1:1", LOG_LEVEL: "error" };
 const EXPECTED_TOOLS = ["get", "create", "update", "delete", "tags", "search", "memo_links"];
 
@@ -75,6 +79,11 @@ async function testStdio() {
   if (!reply) fail(`stdio: sin respuesta a tools/list en 10s${logs.length ? " | " + logs.join(" ").slice(0, 300) : ""}`);
   else checkTools((reply.result?.tools ?? []).map((t) => t.name), "stdio tools/list");
 
+  const init = messages.find((m) => m.id === 1);
+  const reportedVersion = init?.result?.serverInfo?.version;
+  if (reportedVersion !== PKG_VERSION) fail(`stdio: serverInfo.version=${reportedVersion} != package.json=${PKG_VERSION}`);
+  else ok(`stdio: serverInfo.version ${reportedVersion}`);
+
   child.kill("SIGKILL");
 }
 
@@ -92,12 +101,12 @@ async function testHttp() {
 
   try {
     const t0 = Date.now();
-    let up = false;
+    let health = null;
     while (Date.now() - t0 < 10000) {
       try {
         const r = await fetch(`${base}/health`);
         if (r.ok) {
-          up = true;
+          health = await r.json();
           break;
         }
       } catch {
@@ -105,11 +114,12 @@ async function testHttp() {
       }
       await sleep(150);
     }
-    if (!up) {
+    if (!health) {
       fail(`http: /health no respondió en 10s${logs.length ? " | " + logs.join(" ").slice(0, 300) : ""}`);
       return;
     }
-    ok("http: /health 200");
+    if (health.version !== PKG_VERSION) fail(`http: /health version=${health.version} != package.json=${PKG_VERSION}`);
+    else ok(`http: /health 200 (version ${health.version})`);
 
     const rpc = async (method, params) => {
       const body = { jsonrpc: "2.0", id: 1, method };
